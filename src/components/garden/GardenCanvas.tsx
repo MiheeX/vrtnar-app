@@ -162,38 +162,32 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           return;
         }
 
+        // Izračunaj lx/ly enkrat tukaj
+        const rect = containerRef.current!.getBoundingClientRect();
+        const lx = (touch.clientX - rect.left - pan.x) / zoom;
+        const ly = (touch.clientY - rect.top - pan.y) / zoom;
+
+        const HIT = 24;
         const touchedBed = beds.find((b) => {
-          const lx =
-            (touch.clientX -
-              containerRef.current!.getBoundingClientRect().left -
-              pan.x) /
-            zoom;
-          const ly =
-            (touch.clientY -
-              containerRef.current!.getBoundingClientRect().top -
-              pan.y) /
-            zoom;
           return (
-            lx >= b.x * CELL &&
-            lx <= (b.x + b.width) * CELL &&
-            ly >= b.y * CELL &&
-            ly <= (b.y + b.height) * CELL
+            lx >= b.x * CELL - HIT &&
+            lx <= (b.x + b.width) * CELL + HIT &&
+            ly >= b.y * CELL - HIT &&
+            ly <= (b.y + b.height) * CELL + HIT
           );
         });
 
         if (touchedBed) {
-          const rect2 = containerRef.current!.getBoundingClientRect();
-          const lx = (touch.clientX - rect2.left - pan.x) / zoom;
-          const ly = (touch.clientY - rect2.top - pan.y) / zoom;
-          const bx = touchedBed.x * CELL,
-            by = touchedBed.y * CELL;
-          const bw = touchedBed.width * CELL,
-            bh = touchedBed.height * CELL;
-          const EDGE = 20;
-          const onLeft = lx - bx < EDGE,
-            onRight = bx + bw - lx < EDGE;
-          const onTop = ly - by < EDGE,
-            onBottom = by + bh - ly < EDGE;
+          const bx = touchedBed.x * CELL;
+          const by = touchedBed.y * CELL;
+          const bw = touchedBed.width * CELL;
+          const bh = touchedBed.height * CELL;
+          const EDGE = 32;
+
+          const onLeft = lx - bx < EDGE;
+          const onRight = bx + bw - lx < EDGE;
+          const onTop = ly - by < EDGE;
+          const onBottom = by + bh - ly < EDGE;
 
           if (onLeft || onRight || onTop || onBottom) {
             let handle: ResizeHandle = "se";
@@ -218,8 +212,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           setInteraction({
             type: "moving",
             bedId: touchedBed.id,
-            offsetX: col - touchedBed.x,
-            offsetY: row - touchedBed.y,
+            offsetX: lx / CELL - touchedBed.x,
+            offsetY: ly / CELL - touchedBed.y,
           });
           return;
         }
@@ -304,11 +298,23 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           setDraft(newDraft);
           setInteraction({ type: "drawing", draft: newDraft });
         } else if (interaction.type === "moving") {
-          const { col, row } = toCell(touch.clientX, touch.clientY);
+          const rect = containerRef.current!.getBoundingClientRect();
+          const lx =
+            (touch.clientX - rect.left - panRef.current.x) / zoomRef.current;
+          const ly =
+            (touch.clientY - rect.top - panRef.current.y) / zoomRef.current;
           const movedBed = beds.find((b) => b.id === interaction.bedId)!;
           const newShape = {
-            x: clamp(col - interaction.offsetX, 0, COLS - 1),
-            y: clamp(row - interaction.offsetY, 0, ROWS - 1),
+            x: clamp(
+              Math.round(lx / CELL - interaction.offsetX),
+              0,
+              COLS - movedBed.width,
+            ),
+            y: clamp(
+              Math.round(ly / CELL - interaction.offsetY),
+              0,
+              ROWS - movedBed.height,
+            ),
             width: movedBed.width,
             height: movedBed.height,
           };
