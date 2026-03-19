@@ -3,6 +3,10 @@ import GardenCanvas from "../components/garden/GardenCanvas";
 import type { GardenCanvasHandle } from "../components/garden/GardenCanvas";
 import { useGardenStore } from "../store/useGardenStore";
 import type { GardenBed } from "../types/garden";
+import { Toolbar } from "../components/Toolbar";
+import { useCurrentUser } from "../hooks/useCurrentUser";
+import { useUserInventory } from "../hooks/useUserInventory";
+import { PlantSelectorModal } from "../components/PlantSelectorModal";
 
 const GardenPage: React.FC = () => {
   const {
@@ -17,6 +21,10 @@ const GardenPage: React.FC = () => {
   const selectedBed = beds.find((b) => b.id === selectedBedId) ?? null;
   const [editName, setEditName] = useState("");
   const canvasRef = useRef<GardenCanvasHandle>(null); // ← ref na canvas
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const { userId } = useCurrentUser();
+  const { inventory, addPlant, removePlant } = useUserInventory(userId ?? "");
 
   const handleBedSelect = (bed: GardenBed) => {
     selectBed(bed.id);
@@ -27,41 +35,17 @@ const GardenPage: React.FC = () => {
     <div className="flex flex-col h-screen bg-stone-50 select-none">
       {/* Toolbar */}
       <div
-        className="flex items-center gap-2 px-4 py-3 bg-white border-b border-stone-200 shadow-sm"
         onTouchStart={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <span className="font-semibold text-green-800 text-lg mr-2">
-          🌱 Moj vrt
-        </span>
-        <div className="flex gap-1 ml-auto">
-          <button
-            onClick={() => {
-              canvasRef.current?.reset(); // ← reset pred modom
-              setMode("pan");
-            }}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              mode === "pan"
-                ? "bg-green-600 text-white"
-                : "bg-stone-100 text-stone-600 hover:bg-stone-200"
-            }`}
-          >
-            ✋ Premikaj
-          </button>
-          <button
-            onClick={() => {
-              canvasRef.current?.reset(); // ← reset tudi pri draw
-              setMode("draw");
-            }}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              mode === "draw"
-                ? "bg-amber-500 text-white"
-                : "bg-stone-100 text-stone-600 hover:bg-stone-200"
-            }`}
-          >
-            ✏️ Riši
-          </button>
-        </div>
+        <Toolbar
+          mode={mode}
+          onModeChange={(m) => {
+            canvasRef.current?.reset();
+            setMode(m);
+          }}
+          onSettingsOpen={() => setSettingsOpen(true)}
+        />
       </div>
 
       {/* Mode hint */}
@@ -123,6 +107,14 @@ const GardenPage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Settings modal */}
+      <PlantSelectorModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        inventory={inventory}
+        onAdd={addPlant}
+        onRemove={removePlant}
+      />
     </div>
   );
 };
