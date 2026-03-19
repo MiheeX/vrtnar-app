@@ -74,6 +74,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const [draft, setDraft] = useState<DraftBed | null>(null);
     const [colorIndex, setColorIndex] = useState(0);
     const [resizeCollision, setResizeCollision] = useState(false);
+    const pendingDrawStart = useRef<{ col: number; row: number } | null>(null);
 
     // ← reset metoda dostopna iz GardenPage
     useImperativeHandle(ref, () => ({
@@ -118,6 +119,10 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const onTouchStart = useCallback(
       (e: React.TouchEvent) => {
         if (e.touches.length === 2) {
+          pendingDrawStart.current = null;
+          if (interaction.type === "drawing") {
+            setInteraction({ type: "idle" });
+          }
           const dx = e.touches[0].clientX - e.touches[1].clientX;
           const dy = e.touches[0].clientY - e.touches[1].clientY;
           lastPinchDist.current = Math.hypot(dx, dy);
@@ -127,9 +132,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           };
           return;
         }
+
         if (draft) {
-          // Draft čaka na potrditev — omogoči pan z 1 prstom
-          if (e.touches.length === 1) {
+          if (e.touches.length === 1 && lastPinchDist.current === null) {
             const touch = e.touches[0];
             setInteraction({
               type: "panning",
@@ -141,6 +146,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           }
           return;
         }
+
         if (e.touches.length !== 1) return;
         const touch = e.touches[0];
         const { col, row } = toCell(touch.clientX, touch.clientY);
@@ -218,13 +224,10 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           return;
         }
 
-        setDraft({ startX: col, startY: row, endX: col, endY: row });
-        setInteraction({
-          type: "drawing",
-          draft: { startX: col, startY: row, endX: col, endY: row },
-        });
+        // Empty space → samo zabeleži, ne začni še
+        pendingDrawStart.current = { col, row };
       },
-      [mode, beds, pan, zoom, toCell, draft],
+      [mode, beds, pan, zoom, toCell, draft, interaction],
     );
 
     const onTouchMove = useCallback(
@@ -269,6 +272,23 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         }
 
         if (e.touches.length !== 1) return;
+        if (lastPinchDist.current !== null) return;
+
+        // Če imamo pending draw start, zdaj začnemo
+        if (
+          pendingDrawStart.current &&
+          interaction.type === "idle" &&
+          mode === "draw"
+        ) {
+          const { col, row } = pendingDrawStart.current;
+          setDraft({ startX: col, startY: row, endX: col, endY: row });
+          setInteraction({
+            type: "drawing",
+            draft: { startX: col, startY: row, endX: col, endY: row },
+          });
+          pendingDrawStart.current = null;
+        }
+
         const touch = e.touches[0];
 
         if (interaction.type === "panning") {
@@ -332,8 +352,13 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     );
 
     const onTouchEnd = useCallback(() => {
-      lastPinchDist.current = null;
-      lastPinchMid.current = null;
+      // Počisti pinch samo ko ni več 2 prstov
+      pendingDrawStart.current = null;
+      if (lastPinchDist.current !== null) {
+        lastPinchDist.current = null;
+        lastPinchMid.current = null;
+        return; // ← ne procesiramo drawing logike ob dvigu pinch prsta
+      }
       if (interaction.type === "drawing") {
         if (draft) {
           const n = normalizeDraft(draft);
