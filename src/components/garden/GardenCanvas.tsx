@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect } from "react";
+import React, { useRef, useState, useCallback } from "react";
 import { useGardenStore, BED_COLORS } from "../../store/useGardenStore";
 import type { GardenBed, DraftBed, ResizeHandle } from "../../types/garden";
 import { v4 as uuidv4 } from "uuid";
