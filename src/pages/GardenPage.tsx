@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import GardenCanvas from "../components/garden/GardenCanvas";
+import type { GardenCanvasHandle } from "../components/garden/GardenCanvas";
 import { useGardenStore } from "../store/useGardenStore";
 import type { GardenBed } from "../types/garden";
 
@@ -15,6 +16,7 @@ const GardenPage: React.FC = () => {
   } = useGardenStore();
   const selectedBed = beds.find((b) => b.id === selectedBedId) ?? null;
   const [editName, setEditName] = useState("");
+  const canvasRef = useRef<GardenCanvasHandle>(null); // ← ref na canvas
 
   const handleBedSelect = (bed: GardenBed) => {
     selectBed(bed.id);
@@ -34,7 +36,10 @@ const GardenPage: React.FC = () => {
         </span>
         <div className="flex gap-1 ml-auto">
           <button
-            onClick={() => setMode("pan")}
+            onClick={() => {
+              canvasRef.current?.reset(); // ← reset pred modom
+              setMode("pan");
+            }}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               mode === "pan"
                 ? "bg-green-600 text-white"
@@ -44,7 +49,10 @@ const GardenPage: React.FC = () => {
             ✋ Premikaj
           </button>
           <button
-            onClick={() => setMode("draw")}
+            onClick={() => {
+              canvasRef.current?.reset(); // ← reset tudi pri draw
+              setMode("draw");
+            }}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               mode === "draw"
                 ? "bg-amber-500 text-white"
@@ -58,7 +66,11 @@ const GardenPage: React.FC = () => {
 
       {/* Mode hint */}
       <div
-        className={`text-center text-xs py-1.5 font-medium ...`}
+        className={`text-center text-xs py-1.5 font-medium ${
+          mode === "draw"
+            ? "bg-amber-50 text-amber-700"
+            : "bg-green-50 text-green-700"
+        }`}
         onTouchStart={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -69,7 +81,7 @@ const GardenPage: React.FC = () => {
 
       {/* Canvas */}
       <div className="flex-1 overflow-hidden relative">
-        <GardenCanvas onBedSelect={handleBedSelect} />
+        <GardenCanvas ref={canvasRef} onBedSelect={handleBedSelect} />
       </div>
 
       {/* Info panel — pan mode, bed selected */}
