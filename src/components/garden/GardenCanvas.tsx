@@ -117,7 +117,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     const onTouchStart = useCallback(
       (e: React.TouchEvent) => {
-        if (draft) return;
         if (e.touches.length === 2) {
           const dx = e.touches[0].clientX - e.touches[1].clientX;
           const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -126,6 +125,20 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
             y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
           };
+          return;
+        }
+        if (draft) {
+          // Draft čaka na potrditev — omogoči pan z 1 prstom
+          if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            setInteraction({
+              type: "panning",
+              startX: touch.clientX,
+              startY: touch.clientY,
+              originX: panRef.current.x,
+              originY: panRef.current.y,
+            });
+          }
           return;
         }
         if (e.touches.length !== 1) return;
@@ -344,7 +357,16 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     const onMouseDown = useCallback(
       (e: React.MouseEvent) => {
-        if (draft) return;
+        if (draft) {
+          setInteraction({
+            type: "panning",
+            startX: e.clientX,
+            startY: e.clientY,
+            originX: panRef.current.x,
+            originY: panRef.current.y,
+          });
+          return;
+        }
         const { col, row } = toCell(e.clientX, e.clientY);
 
         if (mode === "pan") {
