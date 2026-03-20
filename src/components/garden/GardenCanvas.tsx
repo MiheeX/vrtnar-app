@@ -10,12 +10,15 @@ import type { GardenBed, DraftBed, ResizeHandle } from "../../types/garden";
 import { supabase } from "../../lib/supabaseClient";
 
 const CELL = 48;
+const SUBCELL = CELL / 2; // 24px
 const COLS = 20;
 const ROWS = 20;
 const MIN_CELLS = 1;
+const LONG_PRESS_MS = 500;
 
 interface Props {
   onBedSelect: (bed: GardenBed) => void;
+  onPlantCell: (bedId: string, cellX: number, cellY: number) => void; // ← novo
   userId: string;
   gardenId: string;
 }
@@ -44,6 +47,14 @@ type InteractionState =
       original: GardenBed;
     };
 
+interface ContextMenu {
+  x: number; // screen x
+  y: number; // screen y
+  bedId: string;
+  cellX: number; // sub-celica znotraj gredice
+  cellY: number;
+}
+
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
 
@@ -55,7 +66,7 @@ const normalizeDraft = (d: DraftBed) => ({
 });
 
 const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
-  ({ onBedSelect, userId, gardenId }, ref) => {
+  ({ onBedSelect, onPlantCell, userId, gardenId }, ref) => {
     const {
       beds,
       mode,
@@ -77,14 +88,92 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const [colorIndex, setColorIndex] = useState(0);
     const [resizeCollision, setResizeCollision] = useState(false);
     const pendingDrawStart = useRef<{ col: number; row: number } | null>(null);
+    const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useImperativeHandle(ref, () => ({
       reset: () => {
         setDraft(null);
         setInteraction({ type: "idle" });
         setResizeCollision(false);
+        setContextMenu(null);
       },
     }));
+
+    // Izračun sub-celice iz screen koordinat
+    const toSubCell = useCallback(
+      (clientX: number, clientY: number, bed: GardenBed) => {
+        const rect = containerRef.current!.getBoundingClientRect();
+        const lx = (clientX - rect.left - pan.x) / zoom;
+        const ly = (clientY - rect.top - pan.y) / zoom;
+        const relX = lx - bed.x * CELL;
+        const relY = ly - bed.y * CELL;
+        return {
+          cellX: clamp(Math.floor(relX / SUBCELL), 0, bed.width * 2 - 1),
+          cellY: clamp(Math.floor(relY / SUBCELL), 0, bed.height * 2 - 1),
+        };
+      },
+      [pan, zoom],
+    );
+
+    const openContextMenu = useCallback(
+      (clientX: number, clientY: number) => {
+        if (mode !== "pan") return;
+        const rect = containerRef.current!.getBoundingClientRect();
+        const lx = (clientX - rect.left - pan.x) / zoom;
+        const ly = (clientY - rect.top - pan.y) / zoom;
+
+        const bed = beds.find(
+          (b) =>
+            lx >= b.x * CELL &&
+            lx <= (b.x + b.width) * CELL &&
+            ly >= b.y * CELL &&
+            ly <= (b.y + b.height) * CELL,
+        );
+        if (!bed) return;
+
+        const { cellX, cellY } = toSubCell(clientX, clientY, bed);
+        setContextMenu({
+          x: clientX - rect.left,
+          y: clientY - rect.top,
+          bedId: bed.id,
+          cellX,
+          cellY,
+        });
+      },
+      [mode, beds, pan, zoom, toSubCell],
+    );
+
+    // Desni klik miška
+    const onContextMenu = useCallback(
+      (e: React.MouseEvent) => {
+        e.preventDefault();
+        openContextMenu(e.clientX, e.clientY);
+      },
+      [openContextMenu],
+    );
+
+    // Dolgi tap
+    const onTouchStartWithLongPress = useCallback(
+      (e: React.TouchEvent) => {
+        if (e.touches.length === 1 && mode === "pan") {
+          const touch = e.touches[0];
+          longPressTimer.current = setTimeout(() => {
+            openContextMenu(touch.clientX, touch.clientY);
+          }, LONG_PRESS_MS);
+        }
+        // pokliči originalni onTouchStart
+        onTouchStart(e);
+      },
+      [mode, openContextMenu],
+    );
+
+    const clearLongPress = useCallback(() => {
+      if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
+    }, []);
 
     const toCell = useCallback(
       (clientX: number, clientY: number) => {
@@ -131,6 +220,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const onTouchStart = useCallback(
       (e: React.TouchEvent) => {
         if (e.touches.length === 2) {
+          clearLongPress();
           pendingDrawStart.current = null;
           if (interaction.type === "drawing") setInteraction({ type: "idle" });
           const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -227,11 +317,12 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
         pendingDrawStart.current = { col, row };
       },
-      [mode, beds, pan, zoom, toCell, draft, interaction],
+      [mode, beds, pan, zoom, toCell, draft, interaction, clearLongPress],
     );
 
     const onTouchMove = useCallback(
       (e: React.TouchEvent) => {
+        clearLongPress(); // premik prekliče dolgi tap
         if (e.touches.length === 2) {
           if (lastPinchDist.current === null || lastPinchMid.current === null)
             return;
@@ -351,10 +442,11 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           }
         }
       },
-      [interaction, toCell, updateBed, beds],
+      [interaction, toCell, updateBed, beds, clearLongPress],
     );
 
     const onTouchEnd = useCallback(() => {
+      clearLongPress();
       pendingDrawStart.current = null;
       if (lastPinchDist.current !== null) {
         lastPinchDist.current = null;
@@ -390,10 +482,14 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         setResizeCollision(false);
         setInteraction({ type: "idle" });
       }
-    }, [interaction, draft, beds, syncBedToSupabase]);
+    }, [interaction, draft, beds, syncBedToSupabase, clearLongPress]);
 
     const onMouseDown = useCallback(
       (e: React.MouseEvent) => {
+        if (contextMenu) {
+          setContextMenu(null);
+          return;
+        }
         if (draft) {
           setInteraction({
             type: "panning",
@@ -478,7 +574,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           draft: { startX: col, startY: row, endX: col, endY: row },
         });
       },
-      [mode, beds, pan, zoom, toCell, draft],
+      [mode, beds, pan, zoom, toCell, draft, contextMenu],
     );
 
     const onMouseMove = useCallback(
@@ -619,7 +715,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
-        onTouchStart={onTouchStart}
+        onContextMenu={onContextMenu}
+        onTouchStart={onTouchStartWithLongPress}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
         onWheel={onWheel}
@@ -721,10 +818,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                 <button
                   onMouseDown={(e) => e.stopPropagation()}
                   onTouchStart={(e) => e.stopPropagation()}
-                  //onClick={() => {
-                  //  supabase.from("beds").delete().eq("id", bed.id);
-                  //  removeBed(bed.id);
-                  //}}
                   onClick={async () => {
                     const { error } = await supabase
                       .from("beds")
@@ -732,7 +825,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                       .eq("id", bed.id);
                     if (error) {
                       console.error("Delete error:", error);
-                      return; // ← ta return mora biti tukaj!
+                      return;
                     }
                     removeBed(bed.id);
                     selectBed(null);
@@ -782,7 +875,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                   ))}
                 </>
               )}
-              {/* Pod-mreža znotraj gredice */}
+              {/* Pod-mreža */}
               {mode === "draw" && (
                 <svg
                   style={{
@@ -796,9 +889,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                   {Array.from({ length: bed.width * 2 - 1 }).map((_, i) => (
                     <line
                       key={`sv${i}`}
-                      x1={(i + 1) * (CELL / 2)}
+                      x1={(i + 1) * SUBCELL}
                       y1={0}
-                      x2={(i + 1) * (CELL / 2)}
+                      x2={(i + 1) * SUBCELL}
                       y2={bed.height * CELL}
                       stroke="rgba(0,0,0,0.10)"
                       strokeWidth="0.5"
@@ -808,9 +901,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                     <line
                       key={`sh${i}`}
                       x1={0}
-                      y1={(i + 1) * (CELL / 2)}
+                      y1={(i + 1) * SUBCELL}
                       x2={bed.width * CELL}
-                      y2={(i + 1) * (CELL / 2)}
+                      y2={(i + 1) * SUBCELL}
                       stroke="rgba(0,0,0,0.10)"
                       strokeWidth="0.5"
                     />
@@ -858,6 +951,37 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             />
           )}
         </div>
+
+        {/* Context menu */}
+        {contextMenu && (
+          <div
+            style={{
+              position: "absolute",
+              left: contextMenu.x,
+              top: contextMenu.y,
+              zIndex: 50,
+              transform: "translate(-50%, -100%)",
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
+            <div className="bg-white rounded-xl shadow-xl border border-stone-200 overflow-hidden min-w-[160px]">
+              <button
+                onClick={() => {
+                  onPlantCell(
+                    contextMenu.bedId,
+                    contextMenu.cellX,
+                    contextMenu.cellY,
+                  );
+                  setContextMenu(null);
+                }}
+                className="w-full px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2"
+              >
+                🌱 Posadi rastlino...
+              </button>
+            </div>
+          </div>
+        )}
 
         {draft && interaction.type !== "drawing" && (
           <div

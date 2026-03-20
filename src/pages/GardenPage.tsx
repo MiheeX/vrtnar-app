@@ -10,6 +10,7 @@ import { PlantSelectorModal } from "../components/PlantSelectorModal";
 import { useGarden } from "../hooks/useGarden";
 import { supabase } from "../lib/supabaseClient";
 import { InventoryModal } from "../components/InventoryModal";
+import { PlantPickerModal } from "../components/PlantPickerModal";
 
 const GardenPage: React.FC = () => {
   const {
@@ -39,6 +40,13 @@ const GardenPage: React.FC = () => {
   };
 
   const [inventoryOpen, setInventoryOpen] = useState(false);
+
+  const [plantPickerOpen, setPlantPickerOpen] = useState(false);
+  const [plantTarget, setPlantTarget] = useState<{
+    bedId: string;
+    cellX: number;
+    cellY: number;
+  } | null>(null);
 
   useEffect(() => {
     const fetchBeds = async () => {
@@ -89,6 +97,10 @@ const GardenPage: React.FC = () => {
         <GardenCanvas
           ref={canvasRef}
           onBedSelect={handleBedSelect}
+          onPlantCell={(bedId, cellX, cellY) => {
+            setPlantTarget({ bedId, cellX, cellY });
+            setPlantPickerOpen(true);
+          }}
           userId={userId ?? ""}
           gardenId={gardenId ?? ""}
         />
@@ -163,6 +175,20 @@ const GardenPage: React.FC = () => {
         onAdd={addPlant}
         onRemove={removePlant}
       />
+      {/* Plant picker modal — sajenje v gredico */}
+      {plantTarget && (
+        <PlantPickerModal
+          open={plantPickerOpen}
+          onClose={() => setPlantPickerOpen(false)}
+          inventory={inventory}
+          bedId={plantTarget.bedId}
+          cellX={plantTarget.cellX}
+          cellY={plantTarget.cellY}
+          onPlanted={() => console.log("Rastlina posajena!")}
+          userId={userId ?? ""}
+          gardenId={gardenId ?? ""}
+        />
+      )}
     </div>
   );
 };
