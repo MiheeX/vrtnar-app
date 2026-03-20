@@ -115,7 +115,9 @@ export function PlantSelectorModal({
                       </button>
                     </div>
                     <button
-                      onClick={() => onAdd(plant.id, getQty(plant.id))}
+                      onClick={() => {
+                        onAdd(plant.id, getQty(plant.id));
+                      }}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-500 text-white text-sm font-medium"
                     >
                       <Check size={14} /> Dodaj

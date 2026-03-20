@@ -9,6 +9,7 @@ import { useUserInventory } from "../hooks/useUserInventory";
 import { PlantSelectorModal } from "../components/PlantSelectorModal";
 import { useGarden } from "../hooks/useGarden";
 import { supabase } from "../lib/supabaseClient";
+import { InventoryModal } from "../components/InventoryModal";
 
 const GardenPage: React.FC = () => {
   const {
@@ -35,6 +36,8 @@ const GardenPage: React.FC = () => {
     setEditName(bed.name);
   };
 
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+
   useEffect(() => {
     const fetchBeds = async () => {
       const { data, error } = await supabase
@@ -60,6 +63,7 @@ const GardenPage: React.FC = () => {
             setMode(m);
           }}
           onSettingsOpen={() => setSettingsOpen(true)}
+          onInventoryOpen={() => setInventoryOpen(true)}
         />
       </div>
 
@@ -141,6 +145,13 @@ const GardenPage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Inventory modal*/}
+      <InventoryModal
+        open={inventoryOpen}
+        onClose={() => setInventoryOpen(false)}
+        inventory={inventory}
+        onRemove={removePlant}
+      />
       {/* Settings modal */}
       <PlantSelectorModal
         open={settingsOpen}

@@ -21,11 +21,15 @@ export function useUserInventory(userId: string) {
   }, [userId]);
 
   const addPlant = async (plantId: string, quantity: number = 1) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("user_plants")
       .upsert({ user_id: userId, plant_id: plantId, quantity })
       .select("*, plant:plants(*)")
       .single();
+
+    console.log("addPlant data:", data);
+    console.log("addPlant error:", error);
+
     if (data) setInventory((prev) => [...prev, data]);
   };
 

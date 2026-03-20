@@ -1,4 +1,4 @@
-import { Settings, Move, Pencil } from "lucide-react";
+import { Settings, Move, Pencil, ShoppingBasket } from "lucide-react";
 
 type Mode = "pan" | "draw";
 
@@ -6,9 +6,15 @@ interface ToolbarProps {
   mode: Mode;
   onModeChange: (mode: Mode) => void;
   onSettingsOpen: () => void;
+  onInventoryOpen: () => void;
 }
 
-export function Toolbar({ mode, onModeChange, onSettingsOpen }: ToolbarProps) {
+export function Toolbar({
+  mode,
+  onModeChange,
+  onSettingsOpen,
+  onInventoryOpen,
+}: ToolbarProps) {
   return (
     <div className="flex items-center gap-2 px-4 py-2 bg-white border-b border-gray-200 shadow-sm">
       {/* Leva stran - naslov */}
@@ -19,6 +25,14 @@ export function Toolbar({ mode, onModeChange, onSettingsOpen }: ToolbarProps) {
 
       {/* Desna stran - orodja */}
       <div className="flex items-center gap-2">
+        <button
+          onClick={onInventoryOpen}
+          className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
+          title="Moj inventar"
+        >
+          <ShoppingBasket size={20} />
+        </button>
+
         <button
           onClick={onSettingsOpen}
           className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
