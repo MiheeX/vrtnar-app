@@ -782,6 +782,41 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                   ))}
                 </>
               )}
+              {/* Pod-mreža znotraj gredice */}
+              {mode === "draw" && (
+                <svg
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    pointerEvents: "none",
+                  }}
+                >
+                  {Array.from({ length: bed.width * 2 - 1 }).map((_, i) => (
+                    <line
+                      key={`sv${i}`}
+                      x1={(i + 1) * (CELL / 2)}
+                      y1={0}
+                      x2={(i + 1) * (CELL / 2)}
+                      y2={bed.height * CELL}
+                      stroke="rgba(0,0,0,0.10)"
+                      strokeWidth="0.5"
+                    />
+                  ))}
+                  {Array.from({ length: bed.height * 2 - 1 }).map((_, i) => (
+                    <line
+                      key={`sh${i}`}
+                      x1={0}
+                      y1={(i + 1) * (CELL / 2)}
+                      x2={bed.width * CELL}
+                      y2={(i + 1) * (CELL / 2)}
+                      stroke="rgba(0,0,0,0.10)"
+                      strokeWidth="0.5"
+                    />
+                  ))}
+                </svg>
+              )}
               <span
                 style={{
                   position: "absolute",
