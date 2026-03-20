@@ -11,13 +11,7 @@ interface Props {
   onRemove: (userPlantId: string) => void;
 }
 
-export function PlantSelectorModal({
-  open,
-  onClose,
-  inventory,
-  onAdd,
-  onRemove,
-}: Props) {
+export function PlantSelectorModal({ open, onClose, inventory, onAdd }: Props) {
   const { plants, loading } = usePlants();
   const [quantities, setQuantities] = useState<Record<string, number>>({});
 

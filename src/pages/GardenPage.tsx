@@ -42,7 +42,7 @@ const GardenPage: React.FC = () => {
 
   useEffect(() => {
     const fetchBeds = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("beds")
         .select("*")
         .eq("garden_id", gardenId);
