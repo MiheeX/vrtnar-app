@@ -24,7 +24,7 @@ export function useBedPlants(gardenId: string) {
   const fetch = async () => {
     if (!gardenId) return;
     const { data, error } = await supabase
-      .from("garden_plants")
+      .from("bed_plants")
       .select(
         "*, plant:plants(id, name, img, cells_spacing, around_cells_spacing)",
       )

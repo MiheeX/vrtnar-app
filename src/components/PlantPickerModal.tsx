@@ -44,7 +44,7 @@ export function PlantPickerModal({
 
       // 1. Naloži vse rastline v tej gredici
       const { data: bp } = await supabase
-        .from("garden_plants")
+        .from("bed_plants")
         .select("id, plant_id, cell_x, cell_y")
         .eq("bed_id", bedId);
       setBedPlants(bp ?? []);
@@ -99,7 +99,7 @@ export function PlantPickerModal({
   };
 
   const plantInCell = async (plantId: string) => {
-    const { error } = await supabase.from("garden_plants").insert({
+    const { error } = await supabase.from("bed_plants").insert({
       user_id: userId,
       garden_id: gardenId,
       bed_id: bedId,
