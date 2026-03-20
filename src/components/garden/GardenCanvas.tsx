@@ -20,6 +20,7 @@ const LONG_PRESS_MS = 500;
 interface Props {
   onBedSelect: (bed: GardenBed) => void;
   onPlantCell: (bedId: string, cellX: number, cellY: number) => void;
+  onPlantsChanged: () => void;
   bedPlants: BedPlant[];
   userId: string;
   gardenId: string;
@@ -50,11 +51,13 @@ type InteractionState =
     };
 
 interface ContextMenu {
-  x: number; // screen x
-  y: number; // screen y
+  x: number;
+  y: number;
+  type: "cell" | "plant";
   bedId: string;
-  cellX: number; // sub-celica znotraj gredice
-  cellY: number;
+  cellX?: number;
+  cellY?: number;
+  bedPlantId?: string;
 }
 
 const clamp = (v: number, min: number, max: number) =>
@@ -68,7 +71,10 @@ const normalizeDraft = (d: DraftBed) => ({
 });
 
 const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
-  ({ onBedSelect, onPlantCell, bedPlants, userId, gardenId }, ref) => {
+  (
+    { onBedSelect, onPlantCell, onPlantsChanged, bedPlants, userId, gardenId },
+    ref,
+  ) => {
     const {
       beds,
       mode,
@@ -119,7 +125,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     );
 
     const openContextMenu = useCallback(
-      (clientX: number, clientY: number) => {
+      (clientX: number, clientY: number, options?: { plantId?: string }) => {
         if (mode !== "pan") return;
         const rect = containerRef.current!.getBoundingClientRect();
         const lx = (clientX - rect.left - pan.x) / zoom;
@@ -134,14 +140,27 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         );
         if (!bed) return;
 
-        const { cellX, cellY } = toSubCell(clientX, clientY, bed);
-        setContextMenu({
-          x: clientX - rect.left,
-          y: clientY - rect.top,
-          bedId: bed.id,
-          cellX,
-          cellY,
-        });
+        if (options?.plantId) {
+          // context meni za rastlino
+          setContextMenu({
+            x: clientX - rect.left,
+            y: clientY - rect.top,
+            type: "plant",
+            bedId: bed.id,
+            bedPlantId: options.plantId,
+          });
+        } else {
+          // context meni za pod-celico
+          const { cellX, cellY } = toSubCell(clientX, clientY, bed);
+          setContextMenu({
+            x: clientX - rect.left,
+            y: clientY - rect.top,
+            type: "cell",
+            bedId: bed.id,
+            cellX,
+            cellY,
+          });
+        }
       },
       [mode, beds, pan, zoom, toSubCell],
     );
@@ -936,6 +955,31 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                 .map((bp) => (
                   <div
                     key={bp.id}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      if (e.button === 0 && mode === "pan") {
+                        // levi klik = info
+                        // tukaj zaenkrat samo log, kasneje panel
+                        console.log("Plant info:", bp);
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      // desni klik → context menu za rastlino
+                      openContextMenu(e.clientX, e.clientY, { plantId: bp.id });
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                      if (mode !== "pan") return;
+                      const touch = e.touches[0];
+                      // long press za rastlino
+                      longPressTimer.current = setTimeout(() => {
+                        openContextMenu(touch.clientX, touch.clientY, {
+                          plantId: bp.id,
+                        });
+                      }, LONG_PRESS_MS);
+                    }}
                     style={{
                       position: "absolute",
                       left: bp.cell_x * SUBCELL,
@@ -946,7 +990,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                       alignItems: "center",
                       justifyContent: "center",
                       fontSize: 14,
-                      pointerEvents: "none",
+                      pointerEvents: "auto",
                       zIndex: 5,
                     }}
                   >
@@ -990,20 +1034,63 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
           >
-            <div className="bg-white rounded-xl shadow-xl border border-stone-200 overflow-hidden min-w-[160px]">
-              <button
-                onClick={() => {
-                  onPlantCell(
-                    contextMenu.bedId,
-                    contextMenu.cellX,
-                    contextMenu.cellY,
-                  );
-                  setContextMenu(null);
-                }}
-                className="w-full px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2"
-              >
-                🌱 Posadi rastlino...
-              </button>
+            <div className="bg-white rounded-xl shadow-xl border border-stone-200 overflow-hidden min-w-[180px]">
+              {contextMenu.type === "cell" && (
+                <button
+                  onClick={() => {
+                    if (contextMenu.cellX == null || contextMenu.cellY == null)
+                      return;
+                    onPlantCell(
+                      contextMenu.bedId,
+                      contextMenu.cellX,
+                      contextMenu.cellY,
+                    );
+                    setContextMenu(null);
+                  }}
+                  className="w-full px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2"
+                >
+                  🌱 Posadi rastlino...
+                </button>
+              )}
+
+              {contextMenu.type === "plant" && (
+                <>
+                  <button
+                    onClick={() => {
+                      // info — zaenkrat samo log, kasneje panel
+                      console.log(
+                        "Plant info menu for:",
+                        contextMenu.bedPlantId,
+                      );
+                      setContextMenu(null);
+                    }}
+                    className="w-full px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2"
+                  >
+                    ℹ️ Info o rastlini
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!contextMenu.bedPlantId) return;
+                      const { error } = await supabase
+                        .from("bed_plants")
+                        .delete()
+                        .eq("id", contextMenu.bedPlantId);
+                      if (error) {
+                        console.error(
+                          "Napaka pri brisanju rastline iz beda:",
+                          error,
+                        );
+                        return;
+                      }
+                      onPlantsChanged(); // ← osveži hook v GardenPage
+                      setContextMenu(null);
+                    }}
+                    className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-stone-100"
+                  >
+                    🗑️ Odstrani rastlino
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}

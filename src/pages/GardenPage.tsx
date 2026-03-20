@@ -104,6 +104,7 @@ const GardenPage: React.FC = () => {
             setPlantTarget({ bedId, cellX, cellY });
             setPlantPickerOpen(true);
           }}
+          onPlantsChanged={refreshBedPlants}
           bedPlants={bedPlants}
           userId={userId ?? ""}
           gardenId={gardenId ?? ""}
@@ -188,7 +189,7 @@ const GardenPage: React.FC = () => {
           bedId={plantTarget.bedId}
           cellX={plantTarget.cellX}
           cellY={plantTarget.cellY}
-          onPlanted={() => refreshBedPlants()}
+          onPlanted={refreshBedPlants}
           userId={userId ?? ""}
           gardenId={gardenId ?? ""}
         />
