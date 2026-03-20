@@ -40,7 +40,13 @@ export const useGardenStore = create<GardenStore>()(
         set((s) => ({ beds: s.beds.filter((b) => b.id !== id) })),
       selectBed: (id) => set({ selectedBedId: id }),
     }),
-    { name: "garden-store" },
+    {
+      name: "garden-store",
+      partialize: (state) => ({
+        mode: state.mode,
+        // beds namerno izpuščen
+      }),
+    },
   ),
 );
 

@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { useGardenStore, BED_COLORS } from "../../store/useGardenStore";
 import type { GardenBed, DraftBed, ResizeHandle } from "../../types/garden";
-import { v4 as uuidv4 } from "uuid";
+import { supabase } from "../../lib/supabaseClient";
 
 const CELL = 48;
 const COLS = 20;
@@ -16,6 +16,8 @@ const MIN_CELLS = 1;
 
 interface Props {
   onBedSelect: (bed: GardenBed) => void;
+  userId: string;
+  gardenId: string;
 }
 
 export interface GardenCanvasHandle {
@@ -53,7 +55,7 @@ const normalizeDraft = (d: DraftBed) => ({
 });
 
 const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
-  ({ onBedSelect }, ref) => {
+  ({ onBedSelect, userId, gardenId }, ref) => {
     const {
       beds,
       mode,
@@ -76,7 +78,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const [resizeCollision, setResizeCollision] = useState(false);
     const pendingDrawStart = useRef<{ col: number; row: number } | null>(null);
 
-    // ← reset metoda dostopna iz GardenPage
     useImperativeHandle(ref, () => ({
       reset: () => {
         setDraft(null);
@@ -113,6 +114,17 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       });
     };
 
+    const syncBedToSupabase = useCallback(
+      async (id: string, updates: Partial<GardenBed>) => {
+        const { error } = await supabase
+          .from("beds")
+          .update(updates)
+          .eq("id", id);
+        if (error) console.error("Napaka pri sync gredice:", error);
+      },
+      [],
+    );
+
     const lastPinchDist = useRef<number | null>(null);
     const lastPinchMid = useRef<{ x: number; y: number } | null>(null);
 
@@ -120,9 +132,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       (e: React.TouchEvent) => {
         if (e.touches.length === 2) {
           pendingDrawStart.current = null;
-          if (interaction.type === "drawing") {
-            setInteraction({ type: "idle" });
-          }
+          if (interaction.type === "drawing") setInteraction({ type: "idle" });
           const dx = e.touches[0].clientX - e.touches[1].clientX;
           const dy = e.touches[0].clientY - e.touches[1].clientY;
           lastPinchDist.current = Math.hypot(dx, dy);
@@ -162,20 +172,18 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           return;
         }
 
-        // Izračunaj lx/ly enkrat tukaj
         const rect = containerRef.current!.getBoundingClientRect();
         const lx = (touch.clientX - rect.left - pan.x) / zoom;
         const ly = (touch.clientY - rect.top - pan.y) / zoom;
 
         const HIT = 24;
-        const touchedBed = beds.find((b) => {
-          return (
+        const touchedBed = beds.find(
+          (b) =>
             lx >= b.x * CELL - HIT &&
             lx <= (b.x + b.width) * CELL + HIT &&
             ly >= b.y * CELL - HIT &&
-            ly <= (b.y + b.height) * CELL + HIT
-          );
-        });
+            ly <= (b.y + b.height) * CELL + HIT,
+        );
 
         if (touchedBed) {
           const bx = touchedBed.x * CELL;
@@ -183,7 +191,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           const bw = touchedBed.width * CELL;
           const bh = touchedBed.height * CELL;
           const EDGE = 32;
-
           const onLeft = lx - bx < EDGE;
           const onRight = bx + bw - lx < EDGE;
           const onTop = ly - by < EDGE;
@@ -218,7 +225,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           return;
         }
 
-        // Empty space → samo zabeleži, ne začni še
         pendingDrawStart.current = { col, row };
       },
       [mode, beds, pan, zoom, toCell, draft, interaction],
@@ -229,37 +235,29 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         if (e.touches.length === 2) {
           if (lastPinchDist.current === null || lastPinchMid.current === null)
             return;
-
           const t1 = e.touches[0];
           const t2 = e.touches[1];
-
           const newMidX = (t1.clientX + t2.clientX) / 2;
           const newMidY = (t1.clientY + t2.clientY) / 2;
           const newDist = Math.hypot(
             t1.clientX - t2.clientX,
             t1.clientY - t2.clientY,
           );
-
           const scaleRatio = newDist / lastPinchDist.current;
           const currentZoom = zoomRef.current;
           const currentPan = panRef.current;
-
           const rect = containerRef.current!.getBoundingClientRect();
-
           const canvasPointX =
             (lastPinchMid.current.x - rect.left - currentPan.x) / currentZoom;
           const canvasPointY =
             (lastPinchMid.current.y - rect.top - currentPan.y) / currentZoom;
-
           const newZoom = clamp(currentZoom * scaleRatio, 0.3, 2.5);
           const newPanX = newMidX - rect.left - canvasPointX * newZoom;
           const newPanY = newMidY - rect.top - canvasPointY * newZoom;
-
           zoomRef.current = newZoom;
           panRef.current = { x: newPanX, y: newPanY };
           setZoom(newZoom);
           setPan({ x: newPanX, y: newPanY });
-
           lastPinchDist.current = newDist;
           lastPinchMid.current = { x: newMidX, y: newMidY };
           return;
@@ -268,7 +266,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         if (e.touches.length !== 1) return;
         if (lastPinchDist.current !== null) return;
 
-        // Če imamo pending draw start, zdaj začnemo
         if (
           pendingDrawStart.current &&
           interaction.type === "idle" &&
@@ -358,12 +355,21 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     );
 
     const onTouchEnd = useCallback(() => {
-      // Počisti pinch samo ko ni več 2 prstov
       pendingDrawStart.current = null;
       if (lastPinchDist.current !== null) {
         lastPinchDist.current = null;
         lastPinchMid.current = null;
-        return; // ← ne procesiramo drawing logike ob dvigu pinch prsta
+        return;
+      }
+      if (interaction.type === "moving" || interaction.type === "resizing") {
+        const bed = beds.find((b) => b.id === interaction.bedId);
+        if (bed)
+          syncBedToSupabase(bed.id, {
+            x: bed.x,
+            y: bed.y,
+            width: bed.width,
+            height: bed.height,
+          });
       }
       if (interaction.type === "drawing") {
         if (draft) {
@@ -384,7 +390,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         setResizeCollision(false);
         setInteraction({ type: "idle" });
       }
-    }, [interaction, draft, beds]);
+    }, [interaction, draft, beds, syncBedToSupabase]);
 
     const onMouseDown = useCallback(
       (e: React.MouseEvent) => {
@@ -534,6 +540,16 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     );
 
     const onMouseUp = useCallback(() => {
+      if (interaction.type === "moving" || interaction.type === "resizing") {
+        const bed = beds.find((b) => b.id === interaction.bedId);
+        if (bed)
+          syncBedToSupabase(bed.id, {
+            x: bed.x,
+            y: bed.y,
+            width: bed.width,
+            height: bed.height,
+          });
+      }
       if (interaction.type === "drawing") {
         if (draft) {
           const n = normalizeDraft(draft);
@@ -553,26 +569,37 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         setResizeCollision(false);
         setInteraction({ type: "idle" });
       }
-    }, [interaction, draft, beds]);
+    }, [interaction, draft, beds, syncBedToSupabase]);
 
     const onWheel = useCallback((e: React.WheelEvent) => {
       e.preventDefault();
       setZoom((z) => clamp(z - e.deltaY * 0.001, 0.3, 2.5));
     }, []);
 
-    const confirmDraft = () => {
+    const confirmDraft = async () => {
       if (!draft) return;
       const n = normalizeDraft(draft);
-      const newBed: GardenBed = {
-        id: uuidv4(),
-        name: `Gredica ${beds.length + 1}`,
-        x: n.x,
-        y: n.y,
-        width: n.width,
-        height: n.height,
-        color: BED_COLORS[colorIndex % BED_COLORS.length],
-      };
-      addBed(newBed);
+      const { data, error } = await supabase
+        .from("beds")
+        .insert({
+          user_id: userId,
+          garden_id: gardenId,
+          name: `Gredica ${beds.length + 1}`,
+          x: n.x,
+          y: n.y,
+          width: n.width,
+          height: n.height,
+          color: BED_COLORS[colorIndex % BED_COLORS.length],
+        })
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error("Napaka pri shranjevanju gredice:", error);
+        return;
+      }
+
+      addBed(data as GardenBed);
       setColorIndex((c) => c + 1);
       setDraft(null);
       setInteraction({ type: "idle" });
@@ -694,7 +721,22 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                 <button
                   onMouseDown={(e) => e.stopPropagation()}
                   onTouchStart={(e) => e.stopPropagation()}
-                  onClick={() => removeBed(bed.id)}
+                  //onClick={() => {
+                  //  supabase.from("beds").delete().eq("id", bed.id);
+                  //  removeBed(bed.id);
+                  //}}
+                  onClick={async () => {
+                    const { error } = await supabase
+                      .from("beds")
+                      .delete()
+                      .eq("id", bed.id);
+                    if (error) {
+                      console.error("Delete error:", error);
+                      return; // ← ta return mora biti tukaj!
+                    }
+                    removeBed(bed.id);
+                    selectBed(null);
+                  }}
                   style={{
                     position: "absolute",
                     top: -8,
@@ -809,5 +851,4 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 );
 
 GardenCanvas.displayName = "GardenCanvas";
-
 export default GardenCanvas;

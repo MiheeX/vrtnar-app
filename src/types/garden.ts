@@ -1,11 +1,12 @@
 export interface GardenBed {
   id: string;
+  user_id: string;
+  garden_id: string;
   name: string;
-  // grid coordinates (in cells)
   x: number;
   y: number;
-  width: number; // in cells
-  height: number; // in cells
+  width: number;
+  height: number;
   color: string;
 }
 

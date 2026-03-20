@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import GardenCanvas from "../components/garden/GardenCanvas";
 import type { GardenCanvasHandle } from "../components/garden/GardenCanvas";
 import { useGardenStore } from "../store/useGardenStore";
@@ -7,6 +7,8 @@ import { Toolbar } from "../components/Toolbar";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useUserInventory } from "../hooks/useUserInventory";
 import { PlantSelectorModal } from "../components/PlantSelectorModal";
+import { useGarden } from "../hooks/useGarden";
+import { supabase } from "../lib/supabaseClient";
 
 const GardenPage: React.FC = () => {
   const {
@@ -26,10 +28,23 @@ const GardenPage: React.FC = () => {
   const { userId } = useCurrentUser();
   const { inventory, addPlant, removePlant } = useUserInventory(userId ?? "");
 
+  const { gardenId } = useGarden(userId);
+
   const handleBedSelect = (bed: GardenBed) => {
     selectBed(bed.id);
     setEditName(bed.name);
   };
+
+  useEffect(() => {
+    const fetchBeds = async () => {
+      const { data, error } = await supabase
+        .from("beds")
+        .select("*")
+        .eq("garden_id", gardenId);
+      if (data) useGardenStore.setState({ beds: data });
+    };
+    fetchBeds();
+  }, [gardenId]);
 
   return (
     <div className="flex flex-col h-screen bg-stone-50 select-none">
@@ -65,7 +80,12 @@ const GardenPage: React.FC = () => {
 
       {/* Canvas */}
       <div className="flex-1 overflow-hidden relative">
-        <GardenCanvas ref={canvasRef} onBedSelect={handleBedSelect} />
+        <GardenCanvas
+          ref={canvasRef}
+          onBedSelect={handleBedSelect}
+          userId={userId ?? ""}
+          gardenId={gardenId ?? ""}
+        />
       </div>
 
       {/* Info panel — pan mode, bed selected */}
@@ -76,7 +96,13 @@ const GardenPage: React.FC = () => {
               className="text-lg font-semibold text-stone-800 bg-transparent border-b border-stone-300 focus:outline-none focus:border-green-500 w-48"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              onBlur={() => updateBed(selectedBed.id, { name: editName })}
+              onBlur={async () => {
+                updateBed(selectedBed.id, { name: editName });
+                await supabase
+                  .from("beds")
+                  .update({ name: editName })
+                  .eq("id", selectedBed.id);
+              }}
             />
             <button
               onClick={() => selectBed(null)}
@@ -96,7 +122,15 @@ const GardenPage: React.FC = () => {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => {
+              onClick={async () => {
+                const { error } = await supabase
+                  .from("beds")
+                  .delete()
+                  .eq("id", selectedBed.id);
+                if (error) {
+                  console.error("Delete error:", error);
+                  return; // ← ta return mora biti tukaj!
+                }
                 removeBed(selectedBed.id);
                 selectBed(null);
               }}
