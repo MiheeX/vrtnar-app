@@ -11,6 +11,7 @@ import { useGarden } from "../hooks/useGarden";
 import { supabase } from "../lib/supabaseClient";
 import { InventoryModal } from "../components/InventoryModal";
 import { PlantPickerModal } from "../components/PlantPickerModal";
+import { useBedPlants } from "../hooks/useBedPlants";
 
 const GardenPage: React.FC = () => {
   const {
@@ -47,6 +48,8 @@ const GardenPage: React.FC = () => {
     cellX: number;
     cellY: number;
   } | null>(null);
+
+  const { bedPlants, refresh: refreshBedPlants } = useBedPlants(gardenId ?? "");
 
   useEffect(() => {
     const fetchBeds = async () => {
@@ -101,6 +104,7 @@ const GardenPage: React.FC = () => {
             setPlantTarget({ bedId, cellX, cellY });
             setPlantPickerOpen(true);
           }}
+          bedPlants={bedPlants}
           userId={userId ?? ""}
           gardenId={gardenId ?? ""}
         />
@@ -184,7 +188,7 @@ const GardenPage: React.FC = () => {
           bedId={plantTarget.bedId}
           cellX={plantTarget.cellX}
           cellY={plantTarget.cellY}
-          onPlanted={() => console.log("Rastlina posajena!")}
+          onPlanted={() => refreshBedPlants()}
           userId={userId ?? ""}
           gardenId={gardenId ?? ""}
         />

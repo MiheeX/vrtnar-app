@@ -8,6 +8,7 @@ import React, {
 import { useGardenStore, BED_COLORS } from "../../store/useGardenStore";
 import type { GardenBed, DraftBed, ResizeHandle } from "../../types/garden";
 import { supabase } from "../../lib/supabaseClient";
+import type { BedPlant } from "../../hooks/useBedPlants";
 
 const CELL = 48;
 const SUBCELL = CELL / 2; // 24px
@@ -18,7 +19,8 @@ const LONG_PRESS_MS = 500;
 
 interface Props {
   onBedSelect: (bed: GardenBed) => void;
-  onPlantCell: (bedId: string, cellX: number, cellY: number) => void; // ← novo
+  onPlantCell: (bedId: string, cellX: number, cellY: number) => void;
+  bedPlants: BedPlant[];
   userId: string;
   gardenId: string;
 }
@@ -66,7 +68,7 @@ const normalizeDraft = (d: DraftBed) => ({
 });
 
 const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
-  ({ onBedSelect, onPlantCell, userId, gardenId }, ref) => {
+  ({ onBedSelect, onPlantCell, bedPlants, userId, gardenId }, ref) => {
     const {
       beds,
       mode,
@@ -928,6 +930,29 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
               >
                 {bed.name}
               </span>
+              {/* Posajena rastline na pod-mreži */}
+              {bedPlants
+                .filter((bp) => bp.bed_id === bed.id)
+                .map((bp) => (
+                  <div
+                    key={bp.id}
+                    style={{
+                      position: "absolute",
+                      left: bp.cell_x * SUBCELL,
+                      top: bp.cell_y * SUBCELL,
+                      width: SUBCELL,
+                      height: SUBCELL,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 14,
+                      pointerEvents: "none",
+                      zIndex: 5,
+                    }}
+                  >
+                    {bp.plant?.img}
+                  </div>
+                ))}
             </div>
           ))}
 
