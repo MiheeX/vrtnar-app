@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Plus, Minus, Check } from "lucide-react";
 import { usePlants } from "../hooks/usePlants";
 import type { UserInventoryPlant } from "../types/index";
@@ -21,8 +21,6 @@ export function PlantSelectorModal({
   const { plants, loading } = usePlants();
   const [quantities, setQuantities] = useState<Record<string, number>>({});
 
-  if (!open) return null;
-
   const getInventoryEntry = (plantId: string) =>
     inventory.find((i) => i.plant_id === plantId);
 
@@ -34,6 +32,12 @@ export function PlantSelectorModal({
       [plantId]: Math.max(1, (prev[plantId] ?? 1) + delta),
     }));
   };
+
+  useEffect(() => {
+    if (open) setQuantities({});
+  }, [open]);
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -88,42 +92,36 @@ export function PlantSelectorModal({
                 </div>
 
                 {/* Quantity + Add/Remove */}
-                {inInventory ? (
-                  <button
-                    onClick={() => onRemove(entry.id)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 text-red-500 text-sm font-medium"
-                  >
-                    <Minus size={14} /> Odstrani
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 border border-stone-300 rounded-lg overflow-hidden">
-                      <button
-                        onClick={() => adjustQty(plant.id, -1)}
-                        className="px-2 py-1 text-stone-500 hover:bg-stone-100"
-                      >
-                        <Minus size={13} />
-                      </button>
-                      <span className="px-2 text-sm font-medium">
-                        {getQty(plant.id)}
-                      </span>
-                      <button
-                        onClick={() => adjustQty(plant.id, 1)}
-                        className="px-2 py-1 text-stone-500 hover:bg-stone-100"
-                      >
-                        <Plus size={13} />
-                      </button>
-                    </div>
+                <div className="flex items-center gap-2">
+                  {inInventory && (
+                    <span className="text-green-500 text-xs font-medium">
+                      ✓ {entry!.quantity} v inventarju
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1 border border-stone-300 rounded-lg overflow-hidden">
                     <button
-                      onClick={() => {
-                        onAdd(plant.id, getQty(plant.id));
-                      }}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-500 text-white text-sm font-medium"
+                      onClick={() => adjustQty(plant.id, -1)}
+                      className="px-2 py-1 text-stone-500 hover:bg-stone-100"
                     >
-                      <Check size={14} /> Dodaj
+                      <Minus size={13} />
+                    </button>
+                    <span className="px-2 text-sm font-medium">
+                      {getQty(plant.id)}
+                    </span>
+                    <button
+                      onClick={() => adjustQty(plant.id, 1)}
+                      className="px-2 py-1 text-stone-500 hover:bg-stone-100"
+                    >
+                      <Plus size={13} />
                     </button>
                   </div>
-                )}
+                  <button
+                    onClick={() => onAdd(plant.id, getQty(plant.id))}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-500 text-white text-sm font-medium"
+                  >
+                    <Check size={14} /> Dodaj
+                  </button>
+                </div>
               </div>
             );
           })}

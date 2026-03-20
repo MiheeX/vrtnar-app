@@ -21,16 +21,35 @@ export function useUserInventory(userId: string) {
   }, [userId]);
 
   const addPlant = async (plantId: string, quantity: number = 1) => {
-    const { data, error } = await supabase
-      .from("user_plants")
-      .upsert({ user_id: userId, plant_id: plantId, quantity })
-      .select("*, plant:plants(*)")
-      .single();
+    // Preveri ali že obstaja v inventarju
+    const existing = inventory.find((i) => i.plant_id === plantId);
 
-    console.log("addPlant data:", data);
-    console.log("addPlant error:", error);
+    if (existing) {
+      // Prištej količino
+      const newQuantity = existing.quantity + quantity;
+      const { data, error } = await supabase
+        .from("user_plants")
+        .update({ quantity: newQuantity })
+        .eq("id", existing.id)
+        .select("*, plant:plants(*)")
+        .single();
 
-    if (data) setInventory((prev) => [...prev, data]);
+      console.log("updatePlant error:", error);
+      if (data)
+        setInventory((prev) =>
+          prev.map((i) => (i.id === existing.id ? data : i)),
+        );
+    } else {
+      // Dodaj novo
+      const { data, error } = await supabase
+        .from("user_plants")
+        .insert({ user_id: userId, plant_id: plantId, quantity })
+        .select("*, plant:plants(*)")
+        .single();
+
+      console.log("insertPlant error:", error);
+      if (data) setInventory((prev) => [...prev, data]);
+    }
   };
 
   const removePlant = async (userPlantId: string) => {
@@ -38,5 +57,29 @@ export function useUserInventory(userId: string) {
     setInventory((prev) => prev.filter((p) => p.id !== userPlantId));
   };
 
-  return { inventory, loading, addPlant, removePlant };
+  const decrementPlant = async (
+    userPlantId: string,
+    currentQuantity: number,
+  ) => {
+    if (currentQuantity <= 1) {
+      // Če je količina 1, pobriši zapis
+      await supabase.from("user_plants").delete().eq("id", userPlantId);
+      setInventory((prev) => prev.filter((p) => p.id !== userPlantId));
+    } else {
+      // Odštej 1
+      const newQuantity = currentQuantity - 1;
+      const { data } = await supabase
+        .from("user_plants")
+        .update({ quantity: newQuantity })
+        .eq("id", userPlantId)
+        .select("*, plant:plants(*)")
+        .single();
+      if (data)
+        setInventory((prev) =>
+          prev.map((i) => (i.id === userPlantId ? data : i)),
+        );
+    }
+  };
+
+  return { inventory, loading, addPlant, removePlant, decrementPlant };
 }

@@ -27,7 +27,9 @@ const GardenPage: React.FC = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const { userId } = useCurrentUser();
-  const { inventory, addPlant, removePlant } = useUserInventory(userId ?? "");
+  const { inventory, addPlant, removePlant, decrementPlant } = useUserInventory(
+    userId ?? "",
+  );
 
   const { gardenId } = useGarden(userId);
 
@@ -151,6 +153,7 @@ const GardenPage: React.FC = () => {
         onClose={() => setInventoryOpen(false)}
         inventory={inventory}
         onRemove={removePlant}
+        onDecrement={decrementPlant}
       />
       {/* Settings modal */}
       <PlantSelectorModal
