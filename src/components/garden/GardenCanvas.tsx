@@ -961,51 +961,72 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
               {/* Posajena rastline na pod-mreži */}
               {bedPlants
                 .filter((bp) => bp.bed_id === bed.id)
-                .map((bp) => (
-                  <div
-                    key={bp.id}
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      if (e.button === 0 && mode === "pan") {
-                        // levi klik = info
-                        // tukaj zaenkrat samo log, kasneje panel
-                        console.log("Plant info:", bp);
-                      }
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      // desni klik → context menu za rastlino
-                      openContextMenu(e.clientX, e.clientY, { plantId: bp.id });
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation();
-                      if (mode !== "pan") return;
-                      const touch = e.touches[0];
-                      // long press za rastlino
-                      longPressTimer.current = setTimeout(() => {
-                        openContextMenu(touch.clientX, touch.clientY, {
-                          plantId: bp.id,
-                        });
-                      }, LONG_PRESS_MS);
-                    }}
-                    style={{
-                      position: "absolute",
-                      left: bp.cell_x * SUBCELL,
-                      top: bp.cell_y * SUBCELL,
-                      width: SUBCELL,
-                      height: SUBCELL,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 14,
-                      pointerEvents: "auto",
-                      zIndex: 5,
-                    }}
-                  >
-                    {bp.plant?.img}
-                  </div>
-                ))}
+                .map((bp) => {
+                  const spacing = bp.plant?.cells_spacing ?? 1;
+                  const size = spacing * SUBCELL;
+
+                  return (
+                    <React.Fragment key={bp.id}>
+                      {/* Zasedeno območje */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: bp.cell_x * SUBCELL,
+                          top: bp.cell_y * SUBCELL,
+                          width: size,
+                          height: size,
+                          backgroundColor: "rgba(134,239,172,0.15)",
+                          borderRadius: 4,
+                          border: "1px dashed rgba(22,163,74,0.3)",
+                          pointerEvents: "none",
+                          zIndex: 4,
+                        }}
+                      />
+
+                      {/* Ikona */}
+                      <div
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          if (e.button === 0 && mode === "pan") {
+                            console.log("Plant info:", bp);
+                          }
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          openContextMenu(e.clientX, e.clientY, {
+                            plantId: bp.id,
+                          });
+                        }}
+                        onTouchStart={(e) => {
+                          e.stopPropagation();
+                          if (mode !== "pan") return;
+                          const touch = e.touches[0];
+                          longPressTimer.current = setTimeout(() => {
+                            openContextMenu(touch.clientX, touch.clientY, {
+                              plantId: bp.id,
+                            });
+                          }, LONG_PRESS_MS);
+                        }}
+                        style={{
+                          position: "absolute",
+                          left: bp.cell_x * SUBCELL,
+                          top: bp.cell_y * SUBCELL,
+                          width: SUBCELL,
+                          height: SUBCELL,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 14,
+                          pointerEvents: "auto",
+                          zIndex: 5,
+                        }}
+                      >
+                        {bp.plant?.img}
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
             </div>
           ))}
 
