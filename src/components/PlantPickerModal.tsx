@@ -53,15 +53,31 @@ export function PlantPickerModal({
 
       // 2. Naloži slabe sosede za vse rastline ki so v gredici
       const plantIdsInBed = [...new Set((bp ?? []).map((p) => p.plant_id))];
+      console.log("plantIdsInBed:", plantIdsInBed);
       if (plantIdsInBed.length > 0) {
-        const { data: neighbors } = await supabase
+        // Smer A: rastline v gredici → bad neighbor je kandidat
+        const { data: neighborsA } = await supabase
           .from("plant_neighbors")
-          .select("plant_id, neighbor_id, relationship")
+          .select("neighbor_id")
           .in("plant_id", plantIdsInBed)
           .eq("relationship", "bad");
 
+        // Smer B: kandidat → bad neighbor je rastlina v gredici
+        const { data: neighborsB } = await supabase
+          .from("plant_neighbors")
+          .select("plant_id")
+          .in("neighbor_id", plantIdsInBed)
+          .eq("relationship", "bad");
+
+        console.log("neighborsA:", neighborsA);
+        console.log("neighborsB:", neighborsB);
+
         const badIds = new Set<string>();
-        (neighbors ?? []).forEach((n) => badIds.add(n.neighbor_id));
+        (neighborsA ?? []).forEach((n) => badIds.add(n.neighbor_id));
+        (neighborsB ?? []).forEach((n) => badIds.add(n.plant_id));
+
+        console.log("badIds:", [...badIds]);
+
         setBadNeighborIds(badIds);
       } else {
         setBadNeighborIds(new Set());
@@ -212,7 +228,7 @@ export function PlantPickerModal({
                       </p>
                     )}
                     {isBadNeighbor && (
-                      <p className="text-xs text-red-500 mt-0.5">
+                      <p className="text-xs text-yellow-500 mt-0.5">
                         ⚠️ Slab sosed z obstoječo rastlino
                       </p>
                     )}
