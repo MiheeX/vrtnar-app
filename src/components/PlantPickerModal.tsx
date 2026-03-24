@@ -196,6 +196,10 @@ export function PlantPickerModal({
                         {plant.latin_name}
                       </p>
                     )}
+                    <p className="text-xs text-stone-500 mt-0.5">
+                      Količina:{" "}
+                      <span className="font-semibold">{item.quantity}</span>
+                    </p>
                     {/* Razlog zakaj ni primerna */}
                     {spaceCollision && (
                       <p className="text-xs text-red-500 mt-0.5">
