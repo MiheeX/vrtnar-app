@@ -81,5 +81,37 @@ export function useUserInventory(userId: string) {
     }
   };
 
-  return { inventory, loading, addPlant, removePlant, decrementPlant };
+  const consumePlant = async (plantId: string, amount: number = 1) => {
+    const existing = inventory.find((i) => i.plant_id === plantId);
+    if (!existing) return;
+
+    const newQuantity = existing.quantity - amount;
+    if (newQuantity <= 0) {
+      // Pobriši iz inventarja
+      await supabase.from("user_plants").delete().eq("id", existing.id);
+      setInventory((prev) => prev.filter((p) => p.id !== existing.id));
+    } else {
+      const { data, error } = await supabase
+        .from("user_plants")
+        .update({ quantity: newQuantity })
+        .eq("id", existing.id)
+        .select("*, plant:plants(*)")
+        .single();
+      console.log("consumePlant error:", error);
+      if (data) {
+        setInventory((prev) =>
+          prev.map((p) => (p.id === existing.id ? data : p)),
+        );
+      }
+    }
+  };
+
+  return {
+    inventory,
+    loading,
+    addPlant,
+    removePlant,
+    decrementPlant,
+    consumePlant,
+  };
 }

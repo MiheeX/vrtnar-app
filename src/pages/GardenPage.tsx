@@ -6,12 +6,13 @@ import type { GardenBed } from "../types/garden";
 import { Toolbar } from "../components/Toolbar";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useUserInventory } from "../hooks/useUserInventory";
-import { PlantSelectorModal } from "../components/PlantSelectorModal";
+//import { PlantSelectorModal } from "../components/PlantSelectorModal";
 import { useGarden } from "../hooks/useGarden";
 import { supabase } from "../lib/supabaseClient";
 import { InventoryModal } from "../components/InventoryModal";
 import { PlantPickerModal } from "../components/PlantPickerModal";
 import { useBedPlants } from "../hooks/useBedPlants";
+import { SettingsModal } from "../components/SettingsModal";
 
 const GardenPage: React.FC = () => {
   const {
@@ -29,9 +30,11 @@ const GardenPage: React.FC = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const { userId } = useCurrentUser();
-  const { inventory, addPlant, removePlant, decrementPlant } = useUserInventory(
-    userId ?? "",
-  );
+  //const { inventory, addPlant, removePlant, decrementPlant, consumePlant } =
+  //  useUserInventory(userId ?? "");
+
+  const { inventory, addPlant, removePlant, decrementPlant, consumePlant } =
+    useUserInventory(userId ?? "");
 
   const { gardenId } = useGarden(userId);
 
@@ -108,6 +111,7 @@ const GardenPage: React.FC = () => {
           bedPlants={bedPlants}
           userId={userId ?? ""}
           gardenId={gardenId ?? ""}
+          onReturnToInventory={(plantId) => addPlant(plantId, 1)}
         />
       </div>
 
@@ -173,6 +177,7 @@ const GardenPage: React.FC = () => {
         onDecrement={decrementPlant}
       />
       {/* Settings modal */}
+      {/*
       <PlantSelectorModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -180,6 +185,16 @@ const GardenPage: React.FC = () => {
         onAdd={addPlant}
         onRemove={removePlant}
       />
+      */}
+
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        inventory={inventory}
+        onAdd={addPlant}
+        onRemove={removePlant}
+      />
+
       {/* Plant picker modal — sajenje v gredico */}
       {plantTarget && (
         <PlantPickerModal
@@ -190,6 +205,7 @@ const GardenPage: React.FC = () => {
           cellX={plantTarget.cellX}
           cellY={plantTarget.cellY}
           onPlanted={refreshBedPlants}
+          onConsumeFromInventory={(plantId) => consumePlant(plantId, 1)}
           userId={userId ?? ""}
           gardenId={gardenId ?? ""}
         />

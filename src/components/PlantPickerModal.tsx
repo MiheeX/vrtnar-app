@@ -20,6 +20,7 @@ interface Props {
   onPlanted: () => void;
   userId: string;
   gardenId: string;
+  onConsumeFromInventory: (plantId: string) => void;
 }
 
 export function PlantPickerModal({
@@ -30,6 +31,7 @@ export function PlantPickerModal({
   cellX,
   cellY,
   onPlanted,
+  onConsumeFromInventory,
   userId,
   gardenId,
 }: Props) {
@@ -108,10 +110,17 @@ export function PlantPickerModal({
       cell_y: cellY,
       quantity: 1,
     });
+
+    console.log("insert error:", error);
+
     if (error) {
       console.error("Napaka pri sajenju:", error);
       return;
     }
+
+    console.log("calling consumePlant...");
+
+    onConsumeFromInventory(plantId);
     onPlanted();
     onClose();
   };
@@ -153,6 +162,7 @@ export function PlantPickerModal({
           {!loading &&
             inventory.map((item) => {
               const plant = item.plant;
+              if (!plant || item.quantity <= 0) return null;
               if (!plant) return null;
 
               const spaceCollision = hasSpaceCollision(plant.cells_spacing);

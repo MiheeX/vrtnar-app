@@ -24,6 +24,7 @@ interface Props {
   bedPlants: BedPlant[];
   userId: string;
   gardenId: string;
+  onReturnToInventory: (plantId: string) => void;
 }
 
 export interface GardenCanvasHandle {
@@ -72,7 +73,15 @@ const normalizeDraft = (d: DraftBed) => ({
 
 const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
   (
-    { onBedSelect, onPlantCell, onPlantsChanged, bedPlants, userId, gardenId },
+    {
+      onBedSelect,
+      onPlantCell,
+      onPlantsChanged,
+      bedPlants,
+      userId,
+      gardenId,
+      onReturnToInventory,
+    },
     ref,
   ) => {
     const {
@@ -824,11 +833,11 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                 top: bed.y * CELL,
                 width: bed.width * CELL,
                 height: bed.height * CELL,
-                border: `2px solid ${resizeCollision && interaction.type === "resizing" && (interaction as any).bedId === bed.id ? "#dc2626" : selectedBedId === bed.id ? "#15803d" : "#86efac"}`,
+                border: `2px solid ${resizeCollision && interaction.type === "resizing" && interaction.bedId === bed.id ? "#dc2626" : selectedBedId === bed.id ? "#15803d" : "#86efac"}`,
                 backgroundColor:
                   resizeCollision &&
                   interaction.type === "resizing" &&
-                  (interaction as any).bedId === bed.id
+                  interaction.bedId === bed.id
                     ? bed.color.replace(")", ", 0.5)").replace("rgb", "rgba")
                     : bed.color,
                 borderRadius: 6,
@@ -1082,6 +1091,15 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                         );
                         return;
                       }
+
+                      // Vrni v inventar
+                      const bedPlant = bedPlants.find(
+                        (bp) => bp.id === contextMenu.bedPlantId,
+                      );
+                      if (bedPlant) {
+                        onReturnToInventory(bedPlant.plant_id);
+                      }
+
                       onPlantsChanged(); // ← osveži hook v GardenPage
                       setContextMenu(null);
                     }}
