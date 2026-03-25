@@ -8,6 +8,19 @@ interface BedPlant {
   plant_id: string;
   cell_x: number;
   cell_y: number;
+  plant?:
+    | {
+        cells_spacing: number;
+        around_cells_spacing: number;
+        name: string;
+        img: string;
+      }
+    | {
+        cells_spacing: number;
+        around_cells_spacing: number;
+        name: string;
+        img: string;
+      }[];
 }
 
 interface Props {
@@ -23,6 +36,28 @@ interface Props {
   onConsumeFromInventory: (plantId: string) => void;
 }
 
+const getSpacing = (bp: BedPlant): number => {
+  if (!bp.plant) return 1;
+  if (Array.isArray(bp.plant)) return bp.plant[0]?.cells_spacing ?? 1;
+  return bp.plant.cells_spacing;
+};
+
+const getPlantInfo = (bp: BedPlant): { name: string; img: string } => {
+  if (!bp.plant) return { name: "", img: "" };
+  if (Array.isArray(bp.plant))
+    return { name: bp.plant[0]?.name ?? "", img: bp.plant[0]?.img ?? "" };
+  return { name: bp.plant.name, img: bp.plant.img };
+};
+
+const rectsOverlap = (
+  ax: number,
+  ay: number,
+  aSize: number,
+  bx: number,
+  by: number,
+  bSize: number,
+) => ax < bx + bSize && ax + aSize > bx && ay < by + bSize && ay + aSize > by;
+
 export function PlantPickerModal({
   open,
   onClose,
@@ -36,84 +71,133 @@ export function PlantPickerModal({
   gardenId,
 }: Props) {
   const [bedPlants, setBedPlants] = useState<BedPlant[]>([]);
-  const [badNeighborIds, setBadNeighborIds] = useState<Set<string>>(new Set());
+  const [badNeighborPlantIds, setBadNeighborPlantIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!open || !bedId) return;
     const load = async () => {
       setLoading(true);
-
-      // 1. Naloži vse rastline v tej gredici
       const { data: bp } = await supabase
         .from("bed_plants")
-        .select("id, plant_id, cell_x, cell_y")
+        .select(
+          "id, plant_id, cell_x, cell_y, plant:plants(cells_spacing, around_cells_spacing, name, img)",
+        )
         .eq("bed_id", bedId);
       setBedPlants(bp ?? []);
-
-      // 2. Naloži slabe sosede za vse rastline ki so v gredici
-      const plantIdsInBed = [...new Set((bp ?? []).map((p) => p.plant_id))];
-      console.log("plantIdsInBed:", plantIdsInBed);
-      if (plantIdsInBed.length > 0) {
-        // Smer A: rastline v gredici → bad neighbor je kandidat
-        const { data: neighborsA } = await supabase
-          .from("plant_neighbors")
-          .select("neighbor_id")
-          .in("plant_id", plantIdsInBed)
-          .eq("relationship", "bad");
-
-        // Smer B: kandidat → bad neighbor je rastlina v gredici
-        const { data: neighborsB } = await supabase
-          .from("plant_neighbors")
-          .select("plant_id")
-          .in("neighbor_id", plantIdsInBed)
-          .eq("relationship", "bad");
-
-        console.log("neighborsA:", neighborsA);
-        console.log("neighborsB:", neighborsB);
-
-        const badIds = new Set<string>();
-        (neighborsA ?? []).forEach((n) => badIds.add(n.neighbor_id));
-        (neighborsB ?? []).forEach((n) => badIds.add(n.plant_id));
-
-        console.log("badIds:", [...badIds]);
-
-        setBadNeighborIds(badIds);
-      } else {
-        setBadNeighborIds(new Set());
-      }
-
       setLoading(false);
     };
     load();
   }, [open, bedId]);
 
+  useEffect(() => {
+    if (bedPlants.length === 0) {
+      setBadNeighborPlantIds(new Set());
+      return;
+    }
+
+    const neighborPlantIds = [
+      ...new Set(
+        bedPlants
+          .filter((bp) =>
+            rectsOverlap(
+              cellX - 1,
+              cellY - 1,
+              3,
+              bp.cell_x,
+              bp.cell_y,
+              getSpacing(bp),
+            ),
+          )
+          .map((bp) => bp.plant_id),
+      ),
+    ];
+
+    if (neighborPlantIds.length === 0) {
+      setBadNeighborPlantIds(new Set());
+      return;
+    }
+
+    const load = async () => {
+      const { data: neighborsA } = await supabase
+        .from("plant_neighbors")
+        .select("plant_id, neighbor_id")
+        .in("plant_id", neighborPlantIds)
+        .eq("relationship", "bad");
+
+      const { data: neighborsB } = await supabase
+        .from("plant_neighbors")
+        .select("plant_id, neighbor_id")
+        .in("neighbor_id", neighborPlantIds)
+        .eq("relationship", "bad");
+
+      const badIds = new Set<string>();
+      (neighborsA ?? []).forEach((n) => badIds.add(n.neighbor_id));
+      (neighborsB ?? []).forEach((n) => badIds.add(n.plant_id));
+      setBadNeighborPlantIds(badIds);
+    };
+    load();
+  }, [bedPlants, cellX, cellY]);
+
   if (!open) return null;
 
-  // Preveri kolizijo na izbranih koordinatah za dano rastlino
-  const hasSpaceCollision = (cellsSpacing: number): boolean => {
-    return bedPlants.some((bp) => {
-      const dist = Math.max(
-        Math.abs(bp.cell_x - cellX),
-        Math.abs(bp.cell_y - cellY),
-      );
-      return dist < cellsSpacing;
-    });
-  };
+  const hasSpaceCollision = (cellsSpacing: number): boolean =>
+    bedPlants.some((bp) =>
+      rectsOverlap(
+        cellX,
+        cellY,
+        cellsSpacing,
+        bp.cell_x,
+        bp.cell_y,
+        getSpacing(bp),
+      ),
+    );
 
-  // Preveri around_cells_spacing sosedov
-  const hasNeighborCollision = (
+  const hasNeighborSpacingCollision = (
     plantId: string,
     aroundSpacing: number,
-  ): boolean => {
-    return bedPlants.some((bp) => {
+    cellsSpacing: number,
+  ): boolean =>
+    bedPlants.some((bp) => {
       if (bp.plant_id === plantId) return false;
-      const dist = Math.max(
-        Math.abs(bp.cell_x - cellX),
-        Math.abs(bp.cell_y - cellY),
+      return rectsOverlap(
+        cellX - aroundSpacing,
+        cellY - aroundSpacing,
+        cellsSpacing + aroundSpacing * 2,
+        bp.cell_x,
+        bp.cell_y,
+        getSpacing(bp),
       );
-      return dist < aroundSpacing;
     });
+
+  const getBadNeighborsForPlant = (
+    plantId: string,
+    cellsSpacing: number,
+  ): { name: string; img: string }[] => {
+    if (!badNeighborPlantIds.has(plantId)) return [];
+    const seen = new Set<string>();
+    return bedPlants
+      .filter(
+        (bp) =>
+          bp.plant_id !== plantId &&
+          rectsOverlap(
+            cellX - 1,
+            cellY - 1,
+            cellsSpacing + 2,
+            bp.cell_x,
+            bp.cell_y,
+            getSpacing(bp),
+          ),
+      )
+      .filter((bp) => {
+        if (seen.has(bp.plant_id)) return false;
+        seen.add(bp.plant_id);
+        return true;
+      })
+      .map((bp) => getPlantInfo(bp))
+      .filter((p) => p.name !== "");
   };
 
   const plantInCell = async (plantId: string) => {
@@ -126,16 +210,10 @@ export function PlantPickerModal({
       cell_y: cellY,
       quantity: 1,
     });
-
-    console.log("insert error:", error);
-
     if (error) {
       console.error("Napaka pri sajenju:", error);
       return;
     }
-
-    console.log("calling consumePlant...");
-
     onConsumeFromInventory(plantId);
     onPlanted();
     onClose();
@@ -145,7 +223,6 @@ export function PlantPickerModal({
     <div className="fixed inset-0 z-50 flex items-end justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-lg bg-white rounded-t-2xl shadow-xl z-10 max-h-[80vh] flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200">
           <div>
             <h2 className="font-semibold text-stone-800 text-lg">
@@ -163,7 +240,6 @@ export function PlantPickerModal({
           </button>
         </div>
 
-        {/* Lista */}
         <div className="overflow-y-auto flex-1 px-4 py-3 flex flex-col gap-3">
           {loading && (
             <p className="text-stone-400 text-sm text-center py-8">
@@ -179,31 +255,39 @@ export function PlantPickerModal({
             inventory.map((item) => {
               const plant = item.plant;
               if (!plant || item.quantity <= 0) return null;
-              if (!plant) return null;
 
               const spaceCollision = hasSpaceCollision(plant.cells_spacing);
-              const neighborCollision = hasNeighborCollision(
+              const neighborCollision = hasNeighborSpacingCollision(
                 plant.id,
                 plant.around_cells_spacing,
+                plant.cells_spacing,
               );
-              const isBadNeighbor = badNeighborIds.has(plant.id);
-              const hasIssue =
-                spaceCollision || neighborCollision || isBadNeighbor;
+              const badNeighbors = getBadNeighborsForPlant(
+                plant.id,
+                plant.cells_spacing,
+              );
+              const isBadNeighbor = badNeighbors.length > 0;
+
+              const blocked = spaceCollision;
+              const hasWarning =
+                !blocked && (neighborCollision || isBadNeighbor);
 
               return (
                 <div
                   key={item.id}
                   className={`flex items-center gap-3 p-3 rounded-xl border ${
-                    hasIssue
+                    blocked
                       ? "border-red-200 bg-red-50"
-                      : "border-stone-200 bg-stone-50"
+                      : hasWarning
+                        ? "border-yellow-200 bg-yellow-50"
+                        : "border-stone-200 bg-stone-50"
                   }`}
                 >
                   <span className="text-3xl">{plant.img}</span>
 
                   <div className="flex-1">
                     <p
-                      className={`font-medium ${hasIssue ? "text-red-700" : "text-stone-800"}`}
+                      className={`font-medium ${blocked ? "text-red-700" : hasWarning ? "text-yellow-700" : "text-stone-800"}`}
                     >
                       {plant.name}
                     </p>
@@ -216,31 +300,33 @@ export function PlantPickerModal({
                       Količina:{" "}
                       <span className="font-semibold">{item.quantity}</span>
                     </p>
-                    {/* Razlog zakaj ni primerna */}
                     {spaceCollision && (
                       <p className="text-xs text-red-500 mt-0.5">
-                        ⚠️ Premalo prostora
+                        🚫 Ni prostora — celica je zasedena
                       </p>
                     )}
-                    {neighborCollision && !spaceCollision && (
-                      <p className="text-xs text-red-500 mt-0.5">
+                    {!spaceCollision && neighborCollision && (
+                      <p className="text-xs text-yellow-600 mt-0.5">
                         ⚠️ Preblizu drugi rastlini
                       </p>
                     )}
                     {isBadNeighbor && (
-                      <p className="text-xs text-yellow-500 mt-0.5">
-                        ⚠️ Slab sosed z obstoječo rastlino
+                      <p className="text-xs text-yellow-600 mt-0.5">
+                        ⚠️ Slab sosed z:{" "}
+                        {badNeighbors
+                          .map((n) => `${n.img} ${n.name}`)
+                          .join(", ")}
                       </p>
                     )}
                   </div>
 
                   <button
-                    onClick={() => !spaceCollision && plantInCell(plant.id)}
-                    disabled={spaceCollision}
+                    onClick={() => !blocked && plantInCell(plant.id)}
+                    disabled={blocked}
                     className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      spaceCollision
+                      blocked
                         ? "bg-stone-200 text-stone-400 cursor-not-allowed"
-                        : "bg-green-500 text-white"
+                        : "bg-green-500 text-white hover:bg-green-600"
                     }`}
                   >
                     <Check size={14} /> Posadi

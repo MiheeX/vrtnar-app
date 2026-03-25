@@ -183,21 +183,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [openContextMenu],
     );
 
-    // Dolgi tap
-    const onTouchStartWithLongPress = useCallback(
-      (e: React.TouchEvent) => {
-        if (e.touches.length === 1 && mode === "pan") {
-          const touch = e.touches[0];
-          longPressTimer.current = setTimeout(() => {
-            openContextMenu(touch.clientX, touch.clientY);
-          }, LONG_PRESS_MS);
-        }
-        // pokliči originalni onTouchStart
-        onTouchStart(e);
-      },
-      [mode, openContextMenu],
-    );
-
     const clearLongPress = useCallback(() => {
       if (longPressTimer.current) {
         clearTimeout(longPressTimer.current);
@@ -348,6 +333,21 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         pendingDrawStart.current = { col, row };
       },
       [mode, beds, pan, zoom, toCell, draft, interaction, clearLongPress],
+    );
+
+    // Dolgi tap
+    const onTouchStartWithLongPress = useCallback(
+      (e: React.TouchEvent) => {
+        if (e.touches.length === 1 && mode === "pan") {
+          const touch = e.touches[0];
+          longPressTimer.current = setTimeout(() => {
+            openContextMenu(touch.clientX, touch.clientY);
+          }, LONG_PRESS_MS);
+        }
+        // pokliči originalni onTouchStart
+        onTouchStart(e);
+      },
+      [mode, openContextMenu, onTouchStart],
     );
 
     const onTouchMove = useCallback(

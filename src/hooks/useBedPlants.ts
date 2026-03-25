@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 export interface BedPlant {
@@ -21,7 +21,7 @@ export function useBedPlants(gardenId: string) {
   const [bedPlants, setBedPlants] = useState<BedPlant[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetch = async () => {
+  const fetch = useCallback(async () => {
     if (!gardenId) return;
     const { data, error } = await supabase
       .from("bed_plants")
@@ -32,11 +32,11 @@ export function useBedPlants(gardenId: string) {
     if (error) console.error("useBedPlants error:", error);
     setBedPlants(data ?? []);
     setLoading(false);
-  };
+  }, [gardenId]);
 
   useEffect(() => {
     fetch();
-  }, [gardenId]);
+  }, [gardenId, fetch]);
 
   const refresh = () => fetch();
 
