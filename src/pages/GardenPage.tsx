@@ -95,7 +95,7 @@ const GardenPage: React.FC = () => {
       >
         {mode === "draw"
           ? "✏️ Nariši gredico z vlečenjem • Premakni z dotikom sredine • Resize z robom"
-          : "✋ Premikaj pogled z vlečenjem • Tapni gredico za info"}
+          : "✋ Premikaj pogled z vlečenjem • Tapni gredico za info • Desni klik (dolgi tap) za sajenje"}
       </div>
 
       {/* Canvas */}
