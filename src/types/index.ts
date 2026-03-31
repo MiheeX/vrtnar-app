@@ -17,7 +17,31 @@ export interface Plant {
   name: string;
   latin_name: string | null;
   img: string | null;
+  cells_spacing: number; // koliko celic zasede rastlina
+  around_cells_spacing: number; // varnostni pas okoli (collision)
   created_at: string;
+}
+
+// Uporabnikov inventory — koliko ima na zalogi
+export interface UserInventoryPlant {
+  id: string;
+  user_id: string;
+  plant_id: string;
+  quantity: number; // koliko jih ima na zalogi
+  plant?: Plant; // join
+}
+
+// Razporeditev rastlin po gredicah
+export interface GardenPlant {
+  id: string;
+  user_id: string;
+  garden_id: string; // če imaš več vrtov
+  bed_id: string;
+  plant_id: string;
+  cell_x: number; // pozicija znotraj gredice
+  cell_y: number;
+  quantity: number; // koliko jih je na tej poziciji
+  plant?: Plant; // join
 }
 
 // Razmerje med vrtninama
