@@ -4,6 +4,7 @@ import React, {
   useCallback,
   forwardRef,
   useImperativeHandle,
+  useEffect,
 } from "react";
 import { useGardenStore, BED_COLORS } from "../../store/useGardenStore";
 import type { GardenBed, DraftBed, ResizeHandle } from "../../types/garden";
@@ -11,7 +12,7 @@ import { supabase } from "../../lib/supabaseClient";
 import type { BedPlant } from "../../hooks/useBedPlants";
 
 const CELL = 48;
-const SUBCELL = CELL / 2; // 24px
+const SUBCELL = CELL / 2;
 const COLS = 20;
 const ROWS = 20;
 const MIN_CELLS = 1;
@@ -49,6 +50,17 @@ type InteractionState =
       startX: number;
       startY: number;
       original: GardenBed;
+    }
+  | {
+      type: "movingPlant";
+      bedPlantId: string;
+      bedId: string;
+      // trenutna pozicija v sub-celicah (znotraj gredice)
+      cellX: number;
+      cellY: number;
+      // offset od levega zgornjega kota rastline do točke kjer smo prijeli
+      grabOffsetX: number;
+      grabOffsetY: number;
     };
 
 interface ContextMenu {
@@ -98,6 +110,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const [zoom, setZoom] = useState(1);
     const panRef = useRef({ x: 0, y: 0 });
     const zoomRef = useRef(1);
+    panRef.current = pan; //premikanje in start rastline glede na zoom canvasa
+    zoomRef.current = zoom; //premikanje in start rastline glede na zoom canvasa
     const [interaction, setInteraction] = useState<InteractionState>({
       type: "idle",
     });
@@ -107,6 +121,15 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const pendingDrawStart = useRef<{ col: number; row: number } | null>(null);
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // lokalna override pozicija rastline med vlečenjem
+    const [draggingPlantPos, setDraggingPlantPos] = useState<{
+      cellX: number;
+      cellY: number;
+    } | null>(null);
+
+    const [localPlantOverrides, setLocalPlantOverrides] = useState<
+      Record<string, { cellX: number; cellY: number }>
+    >({});
 
     useImperativeHandle(ref, () => ({
       reset: () => {
@@ -114,10 +137,10 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         setInteraction({ type: "idle" });
         setResizeCollision(false);
         setContextMenu(null);
+        setDraggingPlantPos(null);
       },
     }));
 
-    // Izračun sub-celice iz screen koordinat
     const toSubCell = useCallback(
       (clientX: number, clientY: number, bed: GardenBed) => {
         const rect = containerRef.current!.getBoundingClientRect();
@@ -133,13 +156,28 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [pan, zoom],
     );
 
+    // Isto kot toSubCell, ampak uporablja ref vrednosti (za move handlerje)
+    const toSubCellRef = useCallback(
+      (clientX: number, clientY: number, bed: GardenBed) => {
+        const rect = containerRef.current!.getBoundingClientRect();
+        const lx = (clientX - rect.left - panRef.current.x) / zoomRef.current;
+        const ly = (clientY - rect.top - panRef.current.y) / zoomRef.current;
+        const relX = lx - bed.x * CELL;
+        const relY = ly - bed.y * CELL;
+        return {
+          cellX: clamp(Math.floor(relX / SUBCELL), 0, bed.width * 2 - 1),
+          cellY: clamp(Math.floor(relY / SUBCELL), 0, bed.height * 2 - 1),
+        };
+      },
+      [],
+    );
+
     const openContextMenu = useCallback(
       (clientX: number, clientY: number, options?: { plantId?: string }) => {
         if (mode !== "pan") return;
         const rect = containerRef.current!.getBoundingClientRect();
         const lx = (clientX - rect.left - pan.x) / zoom;
         const ly = (clientY - rect.top - pan.y) / zoom;
-
         const bed = beds.find(
           (b) =>
             lx >= b.x * CELL &&
@@ -148,9 +186,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             ly <= (b.y + b.height) * CELL,
         );
         if (!bed) return;
-
         if (options?.plantId) {
-          // context meni za rastlino
           setContextMenu({
             x: clientX - rect.left,
             y: clientY - rect.top,
@@ -159,7 +195,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             bedPlantId: options.plantId,
           });
         } else {
-          // context meni za pod-celico
           const { cellX, cellY } = toSubCell(clientX, clientY, bed);
           setContextMenu({
             x: clientX - rect.left,
@@ -174,7 +209,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [mode, beds, pan, zoom, toSubCell],
     );
 
-    // Desni klik miška
     const onContextMenu = useCallback(
       (e: React.MouseEvent) => {
         e.preventDefault();
@@ -229,6 +263,93 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [],
     );
 
+    // ── Drag & drop rastline ────────────────────────────────────────────────
+
+    const startPlantDrag = useCallback(
+      (bp: BedPlant, clientX: number, clientY: number) => {
+        const bed = beds.find((b) => b.id === bp.bed_id);
+        if (!bed) return;
+        setDraggingPlantPos({ cellX: bp.cell_x, cellY: bp.cell_y });
+        setInteraction({
+          type: "movingPlant",
+          bedPlantId: bp.id,
+          bedId: bp.bed_id,
+          cellX: bp.cell_x,
+          cellY: bp.cell_y,
+          grabOffsetX: 0,
+          grabOffsetY: 0,
+        });
+      },
+      [beds],
+    );
+
+    const updatePlantDragPos = useCallback(
+      (
+        clientX: number,
+        clientY: number,
+        state: Extract<InteractionState, { type: "movingPlant" }>,
+      ) => {
+        const bed = beds.find((b) => b.id === state.bedId);
+        if (!bed) return;
+        const rect = containerRef.current!.getBoundingClientRect();
+        const z = zoomRef.current;
+        const p = panRef.current;
+        const canvasX = (clientX - rect.left - p.x) / z;
+        const canvasY = (clientY - rect.top - p.y) / z;
+        const newCellX = clamp(
+          Math.floor((canvasX - bed.x * CELL) / SUBCELL),
+          0,
+          bed.width * 2 - 1,
+        );
+        const newCellY = clamp(
+          Math.floor((canvasY - bed.y * CELL) / SUBCELL),
+          0,
+          bed.height * 2 - 1,
+        );
+        setDraggingPlantPos({ cellX: newCellX, cellY: newCellY });
+        setInteraction({ ...state, cellX: newCellX, cellY: newCellY });
+      },
+      [beds],
+    );
+
+    const commitPlantDrop = useCallback(
+      async (state: Extract<InteractionState, { type: "movingPlant" }>) => {
+        setInteraction({ type: "idle" });
+        setDraggingPlantPos(null);
+        // Takoj shrani optimistično pozicijo
+        setLocalPlantOverrides((prev) => ({
+          ...prev,
+          [state.bedPlantId]: { cellX: state.cellX, cellY: state.cellY },
+        }));
+        const { error } = await supabase
+          .from("bed_plants")
+          .update({ cell_x: state.cellX, cell_y: state.cellY })
+          .eq("id", state.bedPlantId);
+        if (error) {
+          console.error("Napaka pri premiku rastline:", error);
+          // Ob napaki počisti override da se vrne na originalno
+          setLocalPlantOverrides((prev) => {
+            const next = { ...prev };
+            delete next[state.bedPlantId];
+            return next;
+          });
+        } else {
+          onPlantsChanged();
+          // Počisti override ko hook osvežitev (z malim zamikom da hook uspe)
+          setTimeout(() => {
+            setLocalPlantOverrides((prev) => {
+              const next = { ...prev };
+              delete next[state.bedPlantId];
+              return next;
+            });
+          }, 1000);
+        }
+      },
+      [onPlantsChanged],
+    );
+
+    // ── Touch ───────────────────────────────────────────────────────────────
+
     const lastPinchDist = useRef<number | null>(null);
     const lastPinchMid = useRef<{ x: number; y: number } | null>(null);
 
@@ -247,7 +368,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           };
           return;
         }
-
         if (draft) {
           if (e.touches.length === 1 && lastPinchDist.current === null) {
             const touch = e.touches[0];
@@ -261,11 +381,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           }
           return;
         }
-
         if (e.touches.length !== 1) return;
         const touch = e.touches[0];
         const { col, row } = toCell(touch.clientX, touch.clientY);
-
         if (mode === "pan") {
           setInteraction({
             type: "panning",
@@ -276,11 +394,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           });
           return;
         }
-
         const rect = containerRef.current!.getBoundingClientRect();
         const lx = (touch.clientX - rect.left - pan.x) / zoom;
         const ly = (touch.clientY - rect.top - pan.y) / zoom;
-
         const HIT = 24;
         const touchedBed = beds.find(
           (b) =>
@@ -289,18 +405,16 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             ly >= b.y * CELL - HIT &&
             ly <= (b.y + b.height) * CELL + HIT,
         );
-
         if (touchedBed) {
-          const bx = touchedBed.x * CELL;
-          const by = touchedBed.y * CELL;
-          const bw = touchedBed.width * CELL;
-          const bh = touchedBed.height * CELL;
+          const bx = touchedBed.x * CELL,
+            by = touchedBed.y * CELL;
+          const bw = touchedBed.width * CELL,
+            bh = touchedBed.height * CELL;
           const EDGE = 32;
-          const onLeft = lx - bx < EDGE;
-          const onRight = bx + bw - lx < EDGE;
-          const onTop = ly - by < EDGE;
-          const onBottom = by + bh - ly < EDGE;
-
+          const onLeft = lx - bx < EDGE,
+            onRight = bx + bw - lx < EDGE;
+          const onTop = ly - by < EDGE,
+            onBottom = by + bh - ly < EDGE;
           if (onLeft || onRight || onTop || onBottom) {
             let handle: ResizeHandle = "se";
             if (onTop && onLeft) handle = "nw";
@@ -329,13 +443,11 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           });
           return;
         }
-
         pendingDrawStart.current = { col, row };
       },
       [mode, beds, pan, zoom, toCell, draft, interaction, clearLongPress],
     );
 
-    // Dolgi tap
     const onTouchStartWithLongPress = useCallback(
       (e: React.TouchEvent) => {
         if (e.touches.length === 1 && mode === "pan") {
@@ -344,7 +456,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             openContextMenu(touch.clientX, touch.clientY);
           }, LONG_PRESS_MS);
         }
-        // pokliči originalni onTouchStart
         onTouchStart(e);
       },
       [mode, openContextMenu, onTouchStart],
@@ -352,12 +463,12 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     const onTouchMove = useCallback(
       (e: React.TouchEvent) => {
-        clearLongPress(); // premik prekliče dolgi tap
+        clearLongPress();
         if (e.touches.length === 2) {
           if (lastPinchDist.current === null || lastPinchMid.current === null)
             return;
-          const t1 = e.touches[0];
-          const t2 = e.touches[1];
+          const t1 = e.touches[0],
+            t2 = e.touches[1];
           const newMidX = (t1.clientX + t2.clientX) / 2;
           const newMidY = (t1.clientY + t2.clientY) / 2;
           const newDist = Math.hypot(
@@ -365,8 +476,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             t1.clientY - t2.clientY,
           );
           const scaleRatio = newDist / lastPinchDist.current;
-          const currentZoom = zoomRef.current;
-          const currentPan = panRef.current;
+          const currentZoom = zoomRef.current,
+            currentPan = panRef.current;
           const rect = containerRef.current!.getBoundingClientRect();
           const canvasPointX =
             (lastPinchMid.current.x - rect.left - currentPan.x) / currentZoom;
@@ -383,10 +494,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           lastPinchMid.current = { x: newMidX, y: newMidY };
           return;
         }
-
         if (e.touches.length !== 1) return;
         if (lastPinchDist.current !== null) return;
-
         if (
           pendingDrawStart.current &&
           interaction.type === "idle" &&
@@ -400,9 +509,11 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           });
           pendingDrawStart.current = null;
         }
-
         const touch = e.touches[0];
-
+        if (interaction.type === "movingPlant") {
+          updatePlantDragPos(touch.clientX, touch.clientY, interaction);
+          return;
+        }
         if (interaction.type === "panning") {
           const newPan = {
             x: interaction.originX + touch.clientX - interaction.startX,
@@ -436,9 +547,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             width: movedBed.width,
             height: movedBed.height,
           };
-          if (!hasCollision(newShape, interaction.bedId)) {
+          if (!hasCollision(newShape, interaction.bedId))
             updateBed(interaction.bedId, { x: newShape.x, y: newShape.y });
-          }
         } else if (interaction.type === "resizing") {
           const rect = containerRef.current!.getBoundingClientRect();
           const lx =
@@ -467,12 +577,18 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           if (!hasCollision(newShape, interaction.bedId)) {
             setResizeCollision(false);
             updateBed(interaction.bedId, newShape);
-          } else {
-            setResizeCollision(true);
-          }
+          } else setResizeCollision(true);
         }
       },
-      [interaction, toCell, updateBed, beds, clearLongPress],
+      [
+        interaction,
+        toCell,
+        updateBed,
+        beds,
+        clearLongPress,
+        updatePlantDragPos,
+        mode,
+      ],
     );
 
     const onTouchEnd = useCallback(() => {
@@ -481,6 +597,10 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       if (lastPinchDist.current !== null) {
         lastPinchDist.current = null;
         lastPinchMid.current = null;
+        return;
+      }
+      if (interaction.type === "movingPlant") {
+        commitPlantDrop(interaction);
         return;
       }
       if (interaction.type === "moving" || interaction.type === "resizing") {
@@ -496,13 +616,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       if (interaction.type === "drawing") {
         if (draft) {
           const n = normalizeDraft(draft);
-          if (
-            n.width >= MIN_CELLS &&
-            n.height >= MIN_CELLS &&
-            !hasCollision(n)
-          ) {
+          if (n.width >= MIN_CELLS && n.height >= MIN_CELLS && !hasCollision(n))
             setInteraction({ type: "idle" });
-          } else {
+          else {
             setDraft(null);
             setResizeCollision(false);
             setInteraction({ type: "idle" });
@@ -512,7 +628,16 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         setResizeCollision(false);
         setInteraction({ type: "idle" });
       }
-    }, [interaction, draft, beds, syncBedToSupabase, clearLongPress]);
+    }, [
+      interaction,
+      draft,
+      beds,
+      syncBedToSupabase,
+      clearLongPress,
+      commitPlantDrop,
+    ]);
+
+    // ── Mouse ───────────────────────────────────────────────────────────────
 
     const onMouseDown = useCallback(
       (e: React.MouseEvent) => {
@@ -531,7 +656,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           return;
         }
         const { col, row } = toCell(e.clientX, e.clientY);
-
         if (mode === "pan") {
           setInteraction({
             type: "panning",
@@ -542,7 +666,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           });
           return;
         }
-
         const touchedBed = beds.find((b) => {
           const rect2 = containerRef.current!.getBoundingClientRect();
           const lx = (e.clientX - rect2.left - pan.x) / zoom;
@@ -554,7 +677,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             ly <= (b.y + b.height) * CELL
           );
         });
-
         if (touchedBed) {
           const rect2 = containerRef.current!.getBoundingClientRect();
           const lx = (e.clientX - rect2.left - pan.x) / zoom;
@@ -568,7 +690,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             onRight = bx + bw - lx < EDGE;
           const onTop = ly - by < EDGE,
             onBottom = by + bh - ly < EDGE;
-
           if (onLeft || onRight || onTop || onBottom) {
             let handle: ResizeHandle = "se";
             if (onTop && onLeft) handle = "nw";
@@ -597,7 +718,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           });
           return;
         }
-
         setDraft({ startX: col, startY: row, endX: col, endY: row });
         setInteraction({
           type: "drawing",
@@ -609,11 +729,17 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     const onMouseMove = useCallback(
       (e: React.MouseEvent) => {
+        if (interaction.type === "movingPlant") {
+          updatePlantDragPos(e.clientX, e.clientY, interaction);
+          return;
+        }
         if (interaction.type === "panning") {
-          setPan({
+          const newPan = {
             x: interaction.originX + e.clientX - interaction.startX,
             y: interaction.originY + e.clientY - interaction.startY,
-          });
+          };
+          panRef.current = newPan;
+          setPan(newPan);
         } else if (interaction.type === "drawing") {
           const { col, row } = toCell(e.clientX, e.clientY);
           const newDraft = { ...interaction.draft, endX: col, endY: row };
@@ -628,9 +754,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             width: movedBed.width,
             height: movedBed.height,
           };
-          if (!hasCollision(newShape, interaction.bedId)) {
+          if (!hasCollision(newShape, interaction.bedId))
             updateBed(interaction.bedId, { x: newShape.x, y: newShape.y });
-          }
         } else if (interaction.type === "resizing") {
           const rect = containerRef.current!.getBoundingClientRect();
           const lx = (e.clientX - rect.left - pan.x) / zoom;
@@ -657,15 +782,17 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           if (!hasCollision(newShape, interaction.bedId)) {
             setResizeCollision(false);
             updateBed(interaction.bedId, newShape);
-          } else {
-            setResizeCollision(true);
-          }
+          } else setResizeCollision(true);
         }
       },
-      [interaction, toCell, updateBed, pan, zoom, beds],
+      [interaction, toCell, updateBed, pan, zoom, beds, updatePlantDragPos],
     );
 
     const onMouseUp = useCallback(() => {
+      if (interaction.type === "movingPlant") {
+        commitPlantDrop(interaction);
+        return;
+      }
       if (interaction.type === "moving" || interaction.type === "resizing") {
         const bed = beds.find((b) => b.id === interaction.bedId);
         if (bed)
@@ -679,13 +806,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       if (interaction.type === "drawing") {
         if (draft) {
           const n = normalizeDraft(draft);
-          if (
-            n.width >= MIN_CELLS &&
-            n.height >= MIN_CELLS &&
-            !hasCollision(n)
-          ) {
+          if (n.width >= MIN_CELLS && n.height >= MIN_CELLS && !hasCollision(n))
             setInteraction({ type: "idle" });
-          } else {
+          else {
             setDraft(null);
             setResizeCollision(false);
             setInteraction({ type: "idle" });
@@ -695,7 +818,27 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         setResizeCollision(false);
         setInteraction({ type: "idle" });
       }
-    }, [interaction, draft, beds, syncBedToSupabase]);
+    }, [interaction, draft, beds, syncBedToSupabase, commitPlantDrop]);
+
+    useEffect(() => {
+      const handleMouseUp = () => {
+        if (interaction.type === "movingPlant") {
+          commitPlantDrop(interaction);
+        }
+      };
+      window.addEventListener("mouseup", handleMouseUp);
+      return () => window.removeEventListener("mouseup", handleMouseUp);
+    }, [interaction, commitPlantDrop]);
+
+    useEffect(() => {
+      const handleTouchEnd = () => {
+        if (interaction.type === "movingPlant") {
+          commitPlantDrop(interaction);
+        }
+      };
+      window.addEventListener("touchend", handleTouchEnd);
+      return () => window.removeEventListener("touchend", handleTouchEnd);
+    }, [interaction, commitPlantDrop]);
 
     const onWheel = useCallback((e: React.WheelEvent) => {
       e.preventDefault();
@@ -719,12 +862,10 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         })
         .select()
         .single();
-
       if (error || !data) {
         console.error("Napaka pri shranjevanju gredice:", error);
         return;
       }
-
       addBed(data as GardenBed);
       setColorIndex((c) => c + 1);
       setDraft(null);
@@ -735,8 +876,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       setDraft(null);
       setInteraction({ type: "idle" });
     };
-
     const draftNorm = draft ? normalizeDraft(draft) : null;
+    const isDraggingPlant = interaction.type === "movingPlant";
 
     return (
       <div
@@ -750,7 +891,13 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
         onWheel={onWheel}
-        style={{ cursor: mode === "pan" ? "grab" : "crosshair" }}
+        style={{
+          cursor: isDraggingPlant
+            ? "grabbing"
+            : mode === "pan"
+              ? "grab"
+              : "crosshair",
+        }}
       >
         {/* Zoom buttons */}
         <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
@@ -770,6 +917,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             onClick={() => {
               setZoom(1);
               setPan({ x: 0, y: 0 });
+              panRef.current = { x: 0, y: 0 };
+              zoomRef.current = 1;
             }}
             className="w-9 h-9 bg-white rounded-lg shadow text-xs flex items-center justify-center hover:bg-stone-50"
           >
@@ -844,6 +993,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                 boxSizing: "border-box",
               }}
             >
+              {/* Delete button */}
               {mode === "draw" && (
                 <button
                   onMouseDown={(e) => e.stopPropagation()}
@@ -883,6 +1033,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                   ✕
                 </button>
               )}
+              {/* Resize handles */}
               {mode === "draw" && (
                 <>
                   {(["nw", "ne", "sw", "se"] as ResizeHandle[]).map((h) => (
@@ -940,6 +1091,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                   ))}
                 </svg>
               )}
+
               <span
                 style={{
                   position: "absolute",
@@ -958,12 +1110,30 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
               >
                 {bed.name}
               </span>
-              {/* Posajena rastline na pod-mreži */}
+
+              {/* Posajene rastline */}
               {bedPlants
                 .filter((bp) => bp.bed_id === bed.id)
                 .map((bp) => {
                   const spacing = bp.plant?.cells_spacing ?? 1;
                   const size = spacing * SUBCELL;
+                  const isBeingDragged =
+                    isDraggingPlant &&
+                    interaction.type === "movingPlant" &&
+                    interaction.bedPlantId === bp.id;
+                  const override = localPlantOverrides[bp.id];
+                  const displayX =
+                    isBeingDragged && draggingPlantPos
+                      ? draggingPlantPos.cellX
+                      : override
+                        ? override.cellX
+                        : bp.cell_x;
+                  const displayY =
+                    isBeingDragged && draggingPlantPos
+                      ? draggingPlantPos.cellY
+                      : override
+                        ? override.cellY
+                        : bp.cell_y;
 
                   return (
                     <React.Fragment key={bp.id}>
@@ -971,25 +1141,42 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                       <div
                         style={{
                           position: "absolute",
-                          left: bp.cell_x * SUBCELL,
-                          top: bp.cell_y * SUBCELL,
+                          left: displayX * SUBCELL,
+                          top: displayY * SUBCELL,
                           width: size,
                           height: size,
-                          backgroundColor: "rgba(134,239,172,0.15)",
+                          backgroundColor: isBeingDragged
+                            ? "rgba(134,239,172,0.4)"
+                            : "rgba(134,239,172,0.15)",
                           borderRadius: 4,
-                          border: "1px dashed rgba(22,163,74,0.3)",
+                          border: isBeingDragged
+                            ? "1.5px dashed #16a34a"
+                            : "1px dashed rgba(22,163,74,0.3)",
                           pointerEvents: "none",
-                          zIndex: 4,
+                          zIndex: isBeingDragged ? 10 : 4,
+                          transition: isBeingDragged
+                            ? "none"
+                            : "left 0.1s, top 0.1s",
                         }}
                       />
-
-                      {/* Ikona */}
+                      {/* Ikona rastline */}
                       <div
                         onMouseDown={(e) => {
+                          if (e.button !== 0 || mode !== "pan") return;
                           e.stopPropagation();
-                          if (e.button === 0 && mode === "pan") {
-                            console.log("Plant info:", bp);
+                          // long press za miško — začni timer
+                          longPressTimer.current = setTimeout(() => {
+                            startPlantDrag(bp, e.clientX, e.clientY);
+                          }, LONG_PRESS_MS);
+                        }}
+                        onMouseUp={(e) => {
+                          // Samo počisti timer če drag ŠE NI aktiven (navaden klik)
+                          // Če je drag aktiven, naj window listener naredi drop
+                          if (interaction.type !== "movingPlant") {
+                            clearLongPress();
+                            e.stopPropagation();
                           }
+                          // Med dragom NE kličemo stopPropagation -> window mouseup ujame drop
                         }}
                         onContextMenu={(e) => {
                           e.preventDefault();
@@ -1003,15 +1190,21 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           if (mode !== "pan") return;
                           const touch = e.touches[0];
                           longPressTimer.current = setTimeout(() => {
-                            openContextMenu(touch.clientX, touch.clientY, {
-                              plantId: bp.id,
-                            });
+                            startPlantDrag(bp, touch.clientX, touch.clientY);
                           }, LONG_PRESS_MS);
+                        }}
+                        onTouchEnd={(e) => {
+                          // Samo počisti timer če drag ŠE NI aktiven (navaden klik)
+                          // Če je drag aktiven, naj window listener naredi drop
+                          if (interaction.type !== "movingPlant") {
+                            clearLongPress();
+                            e.stopPropagation();
+                          }
                         }}
                         style={{
                           position: "absolute",
-                          left: bp.cell_x * SUBCELL,
-                          top: bp.cell_y * SUBCELL,
+                          left: displayX * SUBCELL,
+                          top: displayY * SUBCELL,
                           width: SUBCELL,
                           height: SUBCELL,
                           display: "flex",
@@ -1019,7 +1212,15 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           justifyContent: "center",
                           fontSize: 14,
                           pointerEvents: "auto",
-                          zIndex: 5,
+                          zIndex: isBeingDragged ? 11 : 5,
+                          cursor: isBeingDragged ? "grabbing" : "grab",
+                          filter: isBeingDragged
+                            ? "drop-shadow(0 2px 6px rgba(0,0,0,0.25))"
+                            : "none",
+                          transition: isBeingDragged
+                            ? "none"
+                            : "left 0.1s, top 0.1s",
+                          opacity: isBeingDragged ? 0.9 : 1,
                         }}
                       >
                         {bp.plant?.img}
@@ -1082,12 +1283,10 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                   🌱 Posadi rastlino...
                 </button>
               )}
-
               {contextMenu.type === "plant" && (
                 <>
                   <button
                     onClick={() => {
-                      // info — zaenkrat samo log, kasneje panel
                       console.log(
                         "Plant info menu for:",
                         contextMenu.bedPlantId,
@@ -1112,16 +1311,11 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                         );
                         return;
                       }
-
-                      // Vrni v inventar
                       const bedPlant = bedPlants.find(
                         (bp) => bp.id === contextMenu.bedPlantId,
                       );
-                      if (bedPlant) {
-                        onReturnToInventory(bedPlant.plant_id);
-                      }
-
-                      onPlantsChanged(); // ← osveži hook v GardenPage
+                      if (bedPlant) onReturnToInventory(bedPlant.plant_id);
+                      onPlantsChanged();
                       setContextMenu(null);
                     }}
                     className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-stone-100"
@@ -1134,6 +1328,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           </div>
         )}
 
+        {/* Draft confirm bar */}
         {draft && interaction.type !== "drawing" && (
           <div
             className="absolute bottom-0 left-0 right-0 flex gap-3 p-4 bg-white border-t border-stone-200 shadow-lg z-20"
