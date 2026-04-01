@@ -168,6 +168,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     // ── Koordinatni pomočniki ──────────────────────────────────────────────
 
     // Pretvori client koordinate v sub-celico znotraj gredice (z ref vrednostmi)
+    /*
     const toSubCellRef = useCallback(
       (clientX: number, clientY: number, bed: GardenBed) => {
         const rect = containerRef.current!.getBoundingClientRect();
@@ -188,6 +189,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       },
       [],
     );
+    */
 
     // Pretvori client koordinate v celico na glavnem gridu (z state vrednostmi)
     const toCell = useCallback(
@@ -315,7 +317,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     // Začne vlečenje rastline — nastavi interaction state in resetira validacijo
     const startPlantDrag = useCallback(
-      (bp: BedPlant, clientX: number, clientY: number) => {
+      (bp: BedPlant) => {
         const bed = beds.find((b) => b.id === bp.bed_id);
         if (!bed) return;
         setDragTooltip(null);
@@ -1513,7 +1515,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           if (e.button !== 0 || mode !== "pan") return;
                           e.stopPropagation();
                           longPressTimer.current = setTimeout(() => {
-                            startPlantDrag(bp, e.clientX, e.clientY);
+                            startPlantDrag(bp);
                           }, LONG_PRESS_MS);
                         }}
                         onMouseUp={(e) => {
@@ -1532,9 +1534,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                         onTouchStart={(e) => {
                           e.stopPropagation();
                           if (mode !== "pan") return;
-                          const touch = e.touches[0];
                           longPressTimer.current = setTimeout(() => {
-                            startPlantDrag(bp, touch.clientX, touch.clientY);
+                            startPlantDrag(bp);
                           }, LONG_PRESS_MS);
                         }}
                         onTouchEnd={(e) => {
