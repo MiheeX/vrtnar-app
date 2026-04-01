@@ -13,6 +13,7 @@ import { InventoryModal } from "../components/InventoryModal";
 import { PlantPickerModal } from "../components/PlantPickerModal";
 import { useBedPlants } from "../hooks/useBedPlants";
 import { SettingsModal } from "../components/SettingsModal";
+import type { PlantNeighbor } from "../types";
 
 const GardenPage: React.FC = () => {
   const {
@@ -53,6 +54,20 @@ const GardenPage: React.FC = () => {
   } | null>(null);
 
   const { bedPlants, refresh: refreshBedPlants } = useBedPlants(gardenId ?? "");
+
+  const [plantNeighbors, setPlantNeighbors] = useState<PlantNeighbor[]>([]);
+
+  // TODO: kasneje iz baze/userSettings
+  const allowBadNeighborDrop = false;
+
+  useEffect(() => {
+    supabase
+      .from("plant_neighbors")
+      .select("*")
+      .then(({ data }) => {
+        if (data) setPlantNeighbors(data);
+      });
+  }, []);
 
   useEffect(() => {
     const fetchBeds = async () => {
@@ -112,6 +127,8 @@ const GardenPage: React.FC = () => {
           userId={userId ?? ""}
           gardenId={gardenId ?? ""}
           onReturnToInventory={(plantId) => addPlant(plantId, 1)}
+          plantNeighbors={plantNeighbors}
+          allowBadNeighborDrop={allowBadNeighborDrop}
         />
       </div>
 

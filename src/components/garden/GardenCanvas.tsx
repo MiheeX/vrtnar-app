@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { useGardenStore, BED_COLORS } from "../../store/useGardenStore";
 import type { GardenBed, DraftBed, ResizeHandle } from "../../types/garden";
+import type { PlantNeighbor } from "../../types";
 import { supabase } from "../../lib/supabaseClient";
 import type { BedPlant } from "../../hooks/useBedPlants";
 
@@ -26,6 +27,8 @@ interface Props {
   userId: string;
   gardenId: string;
   onReturnToInventory: (plantId: string) => void;
+  plantNeighbors: PlantNeighbor[];
+  allowBadNeighborDrop?: boolean;
 }
 
 export interface GardenCanvasHandle {
@@ -93,6 +96,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       userId,
       gardenId,
       onReturnToInventory,
+      plantNeighbors,
+      allowBadNeighborDrop = false,
     },
     ref,
   ) => {
@@ -130,6 +135,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const [localPlantOverrides, setLocalPlantOverrides] = useState<
       Record<string, { cellX: number; cellY: number }>
     >({});
+    const [isBadDrop, setIsBadDrop] = useState(false);
 
     useImperativeHandle(ref, () => ({
       reset: () => {
@@ -283,6 +289,89 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [beds],
     );
 
+    const commitPlantDrop = useCallback(
+      async (state: Extract<InteractionState, { type: "movingPlant" }>) => {
+        //če je slab sosed, vrni na prvotno mesto ──
+        if (isBadDrop && !allowBadNeighborDrop) {
+          setInteraction({ type: "idle" });
+          setDraggingPlantPos(null);
+          setIsBadDrop(false);
+          return;
+        }
+        setInteraction({ type: "idle" });
+        setDraggingPlantPos(null);
+        setIsBadDrop(false);
+        setLocalPlantOverrides((prev) => ({
+          ...prev,
+          [state.bedPlantId]: { cellX: state.cellX, cellY: state.cellY },
+        }));
+        const { error } = await supabase
+          .from("bed_plants")
+          .update({ cell_x: state.cellX, cell_y: state.cellY })
+          .eq("id", state.bedPlantId);
+        if (error) {
+          console.error("Napaka pri premiku rastline:", error);
+          setLocalPlantOverrides((prev) => {
+            const next = { ...prev };
+            delete next[state.bedPlantId];
+            return next;
+          });
+        } else {
+          onPlantsChanged();
+          setTimeout(() => {
+            setLocalPlantOverrides((prev) => {
+              const next = { ...prev };
+              delete next[state.bedPlantId];
+              return next;
+            });
+          }, 1000);
+        }
+      },
+      [onPlantsChanged, isBadDrop], // ← dodaj isBadDrop v deps
+    );
+
+    const checkBadNeighbors = useCallback(
+      (
+        draggingBpId: string,
+        bedId: string,
+        cellX: number,
+        cellY: number,
+      ): boolean => {
+        const draggingBp = bedPlants.find((bp) => bp.id === draggingBpId);
+        if (!draggingBp?.plant) return false;
+
+        const neighbors = bedPlants.filter(
+          (bp) => bp.bed_id === bedId && bp.id !== draggingBpId,
+        );
+
+        for (const neighbor of neighbors) {
+          if (!neighbor.plant) continue;
+
+          const spacing = draggingBp.plant.cells_spacing ?? 1;
+          const neighborSpacing = neighbor.plant.cells_spacing ?? 1;
+          const totalSpacing = spacing + neighborSpacing;
+
+          const dx = Math.abs(neighbor.cell_x - cellX);
+          const dy = Math.abs(neighbor.cell_y - cellY);
+
+          if (dx < totalSpacing && dy < totalSpacing) {
+            // Preveri v plant_neighbors tabeli
+            const isBad = plantNeighbors.some(
+              (pn) =>
+                pn.relationship === "bad" &&
+                ((pn.plant_id === draggingBp.plant_id &&
+                  pn.neighbor_id === neighbor.plant_id) ||
+                  (pn.plant_id === neighbor.plant_id &&
+                    pn.neighbor_id === draggingBp.plant_id)),
+            );
+            if (isBad) return true;
+          }
+        }
+        return false;
+      },
+      [bedPlants, plantNeighbors],
+    );
+
     const updatePlantDragPos = useCallback(
       (
         clientX: number,
@@ -308,44 +397,16 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         );
         setDraggingPlantPos({ cellX: newCellX, cellY: newCellY });
         setInteraction({ ...state, cellX: newCellX, cellY: newCellY });
+        //preveri slabe sosede ──
+        const bad = checkBadNeighbors(
+          state.bedPlantId,
+          state.bedId,
+          newCellX,
+          newCellY,
+        );
+        setIsBadDrop(bad);
       },
-      [beds],
-    );
-
-    const commitPlantDrop = useCallback(
-      async (state: Extract<InteractionState, { type: "movingPlant" }>) => {
-        setInteraction({ type: "idle" });
-        setDraggingPlantPos(null);
-        // Takoj shrani optimistično pozicijo
-        setLocalPlantOverrides((prev) => ({
-          ...prev,
-          [state.bedPlantId]: { cellX: state.cellX, cellY: state.cellY },
-        }));
-        const { error } = await supabase
-          .from("bed_plants")
-          .update({ cell_x: state.cellX, cell_y: state.cellY })
-          .eq("id", state.bedPlantId);
-        if (error) {
-          console.error("Napaka pri premiku rastline:", error);
-          // Ob napaki počisti override da se vrne na originalno
-          setLocalPlantOverrides((prev) => {
-            const next = { ...prev };
-            delete next[state.bedPlantId];
-            return next;
-          });
-        } else {
-          onPlantsChanged();
-          // Počisti override ko hook osvežitev (z malim zamikom da hook uspe)
-          setTimeout(() => {
-            setLocalPlantOverrides((prev) => {
-              const next = { ...prev };
-              delete next[state.bedPlantId];
-              return next;
-            });
-          }, 1000);
-        }
-      },
-      [onPlantsChanged],
+      [beds, checkBadNeighbors],
     );
 
     // ── Touch ───────────────────────────────────────────────────────────────
@@ -1146,11 +1207,14 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           width: size,
                           height: size,
                           backgroundColor: isBeingDragged
-                            ? "rgba(134,239,172,0.4)"
+                            ? isBadDrop
+                              ? "rgba(239,68,68,0.25)" // rdeča za slab sosed
+                              : "rgba(134,239,172,0.4)"
                             : "rgba(134,239,172,0.15)",
-                          borderRadius: 4,
                           border: isBeingDragged
-                            ? "1.5px dashed #16a34a"
+                            ? isBadDrop
+                              ? "1.5px dashed #dc2626" // rdeča za slab sosed
+                              : "1.5px dashed #16a34a"
                             : "1px dashed rgba(22,163,74,0.3)",
                           pointerEvents: "none",
                           zIndex: isBeingDragged ? 10 : 4,
@@ -1215,7 +1279,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           zIndex: isBeingDragged ? 11 : 5,
                           cursor: isBeingDragged ? "grabbing" : "grab",
                           filter: isBeingDragged
-                            ? "drop-shadow(0 2px 6px rgba(0,0,0,0.25))"
+                            ? isBadDrop
+                              ? "drop-shadow(0 2px 8px rgba(220,38,38,0.5))" // ← rdeč shadow
+                              : "drop-shadow(0 2px 6px rgba(0,0,0,0.25))"
                             : "none",
                           transition: isBeingDragged
                             ? "none"
@@ -1265,7 +1331,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
           >
-            <div className="bg-white rounded-xl shadow-xl border border-stone-200 overflow-hidden min-w-[180px]">
+            <div className="bg-white rounded-xl shadow-xl border border-stone-200 overflow-hidden min-w-45">
               {contextMenu.type === "cell" && (
                 <button
                   onClick={() => {
