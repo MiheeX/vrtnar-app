@@ -383,12 +383,11 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         const currentBadNames: string[] = [];
         for (const neighbor of allBadInBed) {
           if (!neighbor.plant) continue;
-          const spacing = draggingBp.plant.cells_spacing ?? 1;
           const neighborSpacing = neighbor.plant.cells_spacing ?? 1;
-          const totalSpacing = spacing + neighborSpacing;
           const dx = Math.abs(neighbor.cell_x - cellX);
           const dy = Math.abs(neighbor.cell_y - cellY);
-          if (dx < totalSpacing && dy < totalSpacing) {
+          // Slabi sosed je aktiven samo ko smo znotraj njegovega cells_spacing območja
+          if (dx < neighborSpacing && dy < neighborSpacing) {
             const label = `${neighbor.plant.img ?? ""} ${neighbor.plant.name}`;
             if (!currentBadNames.includes(label)) currentBadNames.push(label);
           }
@@ -417,6 +416,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         );
         if (!draggingBp?.plant) return [];
 
+        const draggingSize = draggingBp.plant.cells_spacing ?? 1;
         const names: string[] = [];
 
         for (const bp of currentBedPlants) {
@@ -427,16 +427,16 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           const neighborAround = bp.plant.around_cells_spacing ?? 0;
 
           const inAroundZone =
-            cellX >= bp.cell_x - neighborAround &&
             cellX < bp.cell_x + neighborSize + neighborAround &&
-            cellY >= bp.cell_y - neighborAround &&
-            cellY < bp.cell_y + neighborSize + neighborAround;
+            cellX + draggingSize > bp.cell_x - neighborAround &&
+            cellY < bp.cell_y + neighborSize + neighborAround &&
+            cellY + draggingSize > bp.cell_y - neighborAround;
 
           const inSpaceZone =
-            cellX >= bp.cell_x &&
             cellX < bp.cell_x + neighborSize &&
-            cellY >= bp.cell_y &&
-            cellY < bp.cell_y + neighborSize;
+            cellX + draggingSize > bp.cell_x &&
+            cellY < bp.cell_y + neighborSize &&
+            cellY + draggingSize > bp.cell_y;
 
           if (inAroundZone && !inSpaceZone) {
             const label = `${bp.plant.img ?? ""} ${bp.plant.name}`;
@@ -463,18 +463,22 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         );
         if (!draggingBp?.plant) return false;
 
+        const draggingSize = draggingBp.plant.cells_spacing ?? 1;
+
         return currentBedPlants.some((bp) => {
           if (bp.bed_id !== bedId || bp.id === draggingBpId) return false;
           if (!bp.plant) return false;
 
           const neighborSize = bp.plant.cells_spacing ?? 1;
 
-          // cells_spacing se širi desno in dol od ikone (zgornji levi kot)
+          // Prekrivanje dveh pravokotnikov:
+          // Dragging: (cellX, cellY) → (cellX + draggingSize, cellY + draggingSize)
+          // Neighbor: (bp.cell_x, bp.cell_y) → (bp.cell_x + neighborSize, bp.cell_y + neighborSize)
           return (
-            cellX >= bp.cell_x &&
             cellX < bp.cell_x + neighborSize &&
-            cellY >= bp.cell_y &&
-            cellY < bp.cell_y + neighborSize
+            cellX + draggingSize > bp.cell_x &&
+            cellY < bp.cell_y + neighborSize &&
+            cellY + draggingSize > bp.cell_y
           );
         });
       },
@@ -494,6 +498,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         );
         if (!draggingBp?.plant) return false;
 
+        const draggingSize = draggingBp.plant.cells_spacing ?? 1;
+
         return currentBedPlants.some((bp) => {
           if (bp.bed_id !== bedId || bp.id === draggingBpId) return false;
           if (!bp.plant) return false;
@@ -501,19 +507,19 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           const neighborSize = bp.plant.cells_spacing ?? 1;
           const neighborAround = bp.plant.around_cells_spacing ?? 0;
 
-          // around cona: pravokotnik z around pasom okoli cells_spacing območja
+          // Dragging pravokotnik vs. around cona soseda
           const inAroundZone =
-            cellX >= bp.cell_x - neighborAround &&
             cellX < bp.cell_x + neighborSize + neighborAround &&
-            cellY >= bp.cell_y - neighborAround &&
-            cellY < bp.cell_y + neighborSize + neighborAround;
+            cellX + draggingSize > bp.cell_x - neighborAround &&
+            cellY < bp.cell_y + neighborSize + neighborAround &&
+            cellY + draggingSize > bp.cell_y - neighborAround;
 
-          // ni znotraj cells_spacing (to že pokriva checkSpaceCollision)
+          // Ni znotraj space cone (to pokriva checkSpaceCollision)
           const inSpaceZone =
-            cellX >= bp.cell_x &&
             cellX < bp.cell_x + neighborSize &&
-            cellY >= bp.cell_y &&
-            cellY < bp.cell_y + neighborSize;
+            cellX + draggingSize > bp.cell_x &&
+            cellY < bp.cell_y + neighborSize &&
+            cellY + draggingSize > bp.cell_y;
 
           return inAroundZone && !inSpaceZone;
         });
