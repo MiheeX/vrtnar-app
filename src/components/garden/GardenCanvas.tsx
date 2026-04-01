@@ -417,26 +417,22 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         );
         if (!draggingBp?.plant) return false;
 
-        const draggingSpacing = draggingBp.plant.cells_spacing ?? 1;
-
         return currentBedPlants.some((bp) => {
           if (bp.bed_id !== bedId || bp.id === draggingBpId) return false;
           if (!bp.plant) return false;
 
-          const neighborSpacing = bp.plant.cells_spacing ?? 1;
-          const dx = Math.abs(bp.cell_x - cellX);
-          const dy = Math.abs(bp.cell_y - cellY);
+          const neighborSize = bp.plant.cells_spacing ?? 1;
 
-          // Rastlina A zasede draggingSpacing × draggingSpacing celice
-          // Rastlina B zasede neighborSpacing × neighborSpacing celice
-          // Prekrivanje: kdor koli zasede prostor kjer je drugi
-          const aOverlapsB = dx < draggingSpacing && dy < draggingSpacing;
-          const bOverlapsA = dx < neighborSpacing && dy < neighborSpacing;
-
-          return aOverlapsB || bOverlapsA;
+          // cells_spacing se širi desno in dol od ikone (zgornji levi kot)
+          return (
+            cellX >= bp.cell_x &&
+            cellX < bp.cell_x + neighborSize &&
+            cellY >= bp.cell_y &&
+            cellY < bp.cell_y + neighborSize
+          );
         });
       },
-      [], // Namerno prazno — vedno bere iz refs
+      [],
     );
 
     const checkAroundSpacingCollision = useCallback(
@@ -452,20 +448,28 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         );
         if (!draggingBp?.plant) return false;
 
-        const draggingAround = draggingBp.plant.around_cells_spacing ?? 0;
-
         return currentBedPlants.some((bp) => {
           if (bp.bed_id !== bedId || bp.id === draggingBpId) return false;
           if (!bp.plant) return false;
 
+          const neighborSize = bp.plant.cells_spacing ?? 1;
           const neighborAround = bp.plant.around_cells_spacing ?? 0;
-          const dx = Math.abs(bp.cell_x - cellX);
-          const dy = Math.abs(bp.cell_y - cellY);
 
-          const aInNeighborZone = dx < neighborAround && dy < neighborAround;
-          const bInDraggingZone = dx < draggingAround && dy < draggingAround;
+          // around cona: pravokotnik z around pasom okoli cells_spacing območja
+          const inAroundZone =
+            cellX >= bp.cell_x - neighborAround &&
+            cellX < bp.cell_x + neighborSize + neighborAround &&
+            cellY >= bp.cell_y - neighborAround &&
+            cellY < bp.cell_y + neighborSize + neighborAround;
 
-          return aInNeighborZone || bInDraggingZone;
+          // ni znotraj cells_spacing (to že pokriva checkSpaceCollision)
+          const inSpaceZone =
+            cellX >= bp.cell_x &&
+            cellX < bp.cell_x + neighborSize &&
+            cellY >= bp.cell_y &&
+            cellY < bp.cell_y + neighborSize;
+
+          return inAroundZone && !inSpaceZone;
         });
       },
       [],
