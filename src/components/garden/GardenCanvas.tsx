@@ -126,23 +126,32 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const pendingDrawStart = useRef<{ col: number; row: number } | null>(null);
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    // lokalna override pozicija rastline med vlečenjem
+    const [isSpaceCollision, setIsSpaceCollision] = useState(false);
+    const [isAroundCollision, setIsAroundCollision] = useState(false);
+
+    // Lokalna pozicija rastline med vlečenjem (za optimistični prikaz)
     const [draggingPlantPos, setDraggingPlantPos] = useState<{
       cellX: number;
       cellY: number;
     } | null>(null);
-
     const [localPlantOverrides, setLocalPlantOverrides] = useState<
       Record<string, { cellX: number; cellY: number }>
     >({});
-    const [isBadDrop, setIsBadDrop] = useState(false);
 
+    // Drag & drop validacija
+    const [isBadDrop, setIsBadDrop] = useState(false);
     const [dragTooltip, setDragTooltip] = useState<{
       x: number;
       y: number;
       badNeighborNames: string[];
       currentBadNames: string[];
     } | null>(null);
+
+    // Ref za svež bedPlants znotraj event callbackov
+    const bedPlantsRef = useRef(bedPlants);
+    bedPlantsRef.current = bedPlants;
+    const plantNeighborsRef = useRef(plantNeighbors);
+    plantNeighborsRef.current = plantNeighbors;
 
     useImperativeHandle(ref, () => ({
       reset: () => {
@@ -151,39 +160,99 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         setResizeCollision(false);
         setContextMenu(null);
         setDraggingPlantPos(null);
+        setIsBadDrop(false);
+        setDragTooltip(null);
       },
     }));
 
-    const toSubCell = useCallback(
-      (clientX: number, clientY: number, bed: GardenBed) => {
-        const rect = containerRef.current!.getBoundingClientRect();
-        const lx = (clientX - rect.left - pan.x) / zoom;
-        const ly = (clientY - rect.top - pan.y) / zoom;
-        const relX = lx - bed.x * CELL;
-        const relY = ly - bed.y * CELL;
-        return {
-          cellX: clamp(Math.floor(relX / SUBCELL), 0, bed.width * 2 - 1),
-          cellY: clamp(Math.floor(relY / SUBCELL), 0, bed.height * 2 - 1),
-        };
-      },
-      [pan, zoom],
-    );
+    // ── Koordinatni pomočniki ──────────────────────────────────────────────
 
-    // Isto kot toSubCell, ampak uporablja ref vrednosti (za move handlerje)
+    // Pretvori client koordinate v sub-celico znotraj gredice (z ref vrednostmi)
     const toSubCellRef = useCallback(
       (clientX: number, clientY: number, bed: GardenBed) => {
         const rect = containerRef.current!.getBoundingClientRect();
         const lx = (clientX - rect.left - panRef.current.x) / zoomRef.current;
         const ly = (clientY - rect.top - panRef.current.y) / zoomRef.current;
-        const relX = lx - bed.x * CELL;
-        const relY = ly - bed.y * CELL;
         return {
-          cellX: clamp(Math.floor(relX / SUBCELL), 0, bed.width * 2 - 1),
-          cellY: clamp(Math.floor(relY / SUBCELL), 0, bed.height * 2 - 1),
+          cellX: clamp(
+            Math.floor((lx - bed.x * CELL) / SUBCELL),
+            0,
+            bed.width * 2 - 1,
+          ),
+          cellY: clamp(
+            Math.floor((ly - bed.y * CELL) / SUBCELL),
+            0,
+            bed.height * 2 - 1,
+          ),
         };
       },
       [],
     );
+
+    // Pretvori client koordinate v celico na glavnem gridu (z state vrednostmi)
+    const toCell = useCallback(
+      (clientX: number, clientY: number) => {
+        const rect = containerRef.current!.getBoundingClientRect();
+        const x = (clientX - rect.left - pan.x) / zoom;
+        const y = (clientY - rect.top - pan.y) / zoom;
+        return {
+          col: clamp(Math.floor(x / CELL), 0, COLS - 1),
+          row: clamp(Math.floor(y / CELL), 0, ROWS - 1),
+        };
+      },
+      [pan, zoom],
+    );
+
+    // toSubCell z state vrednostmi (za context menu in enkratne akcije)
+    const toSubCell = useCallback(
+      (clientX: number, clientY: number, bed: GardenBed) => {
+        const rect = containerRef.current!.getBoundingClientRect();
+        const lx = (clientX - rect.left - pan.x) / zoom;
+        const ly = (clientY - rect.top - pan.y) / zoom;
+        return {
+          cellX: clamp(
+            Math.floor((lx - bed.x * CELL) / SUBCELL),
+            0,
+            bed.width * 2 - 1,
+          ),
+          cellY: clamp(
+            Math.floor((ly - bed.y * CELL) / SUBCELL),
+            0,
+            bed.height * 2 - 1,
+          ),
+        };
+      },
+      [pan, zoom],
+    );
+
+    // ── Gredice: kolizija in sync ─────────────────────────────────────────
+
+    const hasCollision = (
+      norm: { x: number; y: number; width: number; height: number },
+      excludeId?: string,
+    ) =>
+      beds.some((bed) => {
+        if (excludeId && bed.id === excludeId) return false;
+        return (
+          norm.x < bed.x + bed.width &&
+          norm.x + norm.width > bed.x &&
+          norm.y < bed.y + bed.height &&
+          norm.y + norm.height > bed.y
+        );
+      });
+
+    const syncBedToSupabase = useCallback(
+      async (id: string, updates: Partial<GardenBed>) => {
+        const { error } = await supabase
+          .from("beds")
+          .update(updates)
+          .eq("id", id);
+        if (error) console.error("Napaka pri sync gredice:", error);
+      },
+      [],
+    );
+
+    // ── Context menu ──────────────────────────────────────────────────────
 
     const openContextMenu = useCallback(
       (clientX: number, clientY: number, options?: { plantId?: string }) => {
@@ -237,52 +306,16 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       }
     }, []);
 
-    const toCell = useCallback(
-      (clientX: number, clientY: number) => {
-        const rect = containerRef.current!.getBoundingClientRect();
-        const x = (clientX - rect.left - pan.x) / zoom;
-        const y = (clientY - rect.top - pan.y) / zoom;
-        return {
-          col: clamp(Math.floor(x / CELL), 0, COLS - 1),
-          row: clamp(Math.floor(y / CELL), 0, ROWS - 1),
-        };
-      },
-      [pan, zoom],
-    );
-
-    const hasCollision = (
-      norm: { x: number; y: number; width: number; height: number },
-      excludeId?: string,
-    ) => {
-      return beds.some((bed) => {
-        if (excludeId && bed.id === excludeId) return false;
-        return (
-          norm.x < bed.x + bed.width &&
-          norm.x + norm.width > bed.x &&
-          norm.y < bed.y + bed.height &&
-          norm.y + norm.height > bed.y
-        );
-      });
-    };
-
-    const syncBedToSupabase = useCallback(
-      async (id: string, updates: Partial<GardenBed>) => {
-        const { error } = await supabase
-          .from("beds")
-          .update(updates)
-          .eq("id", id);
-        if (error) console.error("Napaka pri sync gredice:", error);
-      },
-      [],
-    );
-
-    // ── Drag & drop rastline ────────────────────────────────────────────────
+    // ── Drag & drop rastline ──────────────────────────────────────────────
 
     const startPlantDrag = useCallback(
       (bp: BedPlant, clientX: number, clientY: number) => {
         const bed = beds.find((b) => b.id === bp.bed_id);
-        setDragTooltip(null);
         if (!bed) return;
+        setDragTooltip(null);
+        setIsBadDrop(false);
+        setIsSpaceCollision(false);
+        setIsAroundCollision(false);
         setDraggingPlantPos({ cellX: bp.cell_x, cellY: bp.cell_y });
         setInteraction({
           type: "movingPlant",
@@ -297,48 +330,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [beds],
     );
 
-    const commitPlantDrop = useCallback(
-      async (state: Extract<InteractionState, { type: "movingPlant" }>) => {
-        setDragTooltip(null);
-        //če je slab sosed, vrni na prvotno mesto ──
-        if (isBadDrop && !allowBadNeighborDrop) {
-          setInteraction({ type: "idle" });
-          setDraggingPlantPos(null);
-          setIsBadDrop(false);
-          return;
-        }
-        setInteraction({ type: "idle" });
-        setDraggingPlantPos(null);
-        setIsBadDrop(false);
-        setLocalPlantOverrides((prev) => ({
-          ...prev,
-          [state.bedPlantId]: { cellX: state.cellX, cellY: state.cellY },
-        }));
-        const { error } = await supabase
-          .from("bed_plants")
-          .update({ cell_x: state.cellX, cell_y: state.cellY })
-          .eq("id", state.bedPlantId);
-        if (error) {
-          console.error("Napaka pri premiku rastline:", error);
-          setLocalPlantOverrides((prev) => {
-            const next = { ...prev };
-            delete next[state.bedPlantId];
-            return next;
-          });
-        } else {
-          onPlantsChanged();
-          setTimeout(() => {
-            setLocalPlantOverrides((prev) => {
-              const next = { ...prev };
-              delete next[state.bedPlantId];
-              return next;
-            });
-          }, 1000);
-        }
-      },
-      [onPlantsChanged, isBadDrop],
-    );
-
+    // Vrne info o slabih sosedjh — uporablja REFS za svež bedPlants/plantNeighbors
     const getBadNeighborInfo = useCallback(
       (
         draggingBpId: string,
@@ -350,12 +342,17 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         badNeighborNames: string[];
         currentBadNames: string[];
       } => {
-        const draggingBp = bedPlants.find((bp) => bp.id === draggingBpId);
+        const currentBedPlants = bedPlantsRef.current;
+        const currentNeighbors = plantNeighborsRef.current;
+
+        const draggingBp = currentBedPlants.find(
+          (bp) => bp.id === draggingBpId,
+        );
         if (!draggingBp?.plant)
           return { isBad: false, badNeighborNames: [], currentBadNames: [] };
 
-        // Vse potencialno slabe rastline za to vrsto (ne glede na razdaljo)
-        const allBadNeighborIds = plantNeighbors
+        // IDs vseh slabih sosedov za to vrsto rastline
+        const allBadNeighborIds = currentNeighbors
           .filter(
             (pn) =>
               pn.relationship === "bad" &&
@@ -366,8 +363,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             pn.plant_id === draggingBp.plant_id ? pn.neighbor_id : pn.plant_id,
           );
 
-        // Vse slabe rastline ki so dejansko v tej gredici
-        const allBadInBed = bedPlants.filter(
+        // Slabe rastline ki so dejansko v tej gredici
+        const allBadInBed = currentBedPlants.filter(
           (bp) =>
             bp.bed_id === bedId &&
             bp.id !== draggingBpId &&
@@ -403,7 +400,75 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           currentBadNames,
         };
       },
-      [bedPlants, plantNeighbors],
+      [], // Namerno prazno — vedno bere iz refs
+    );
+
+    // Preveri če se rastlina prostorsko prekriva z obstoječo — uporablja REFS
+    const checkSpaceCollision = useCallback(
+      (
+        draggingBpId: string,
+        bedId: string,
+        cellX: number,
+        cellY: number,
+      ): boolean => {
+        const currentBedPlants = bedPlantsRef.current;
+        const draggingBp = currentBedPlants.find(
+          (bp) => bp.id === draggingBpId,
+        );
+        if (!draggingBp?.plant) return false;
+
+        const draggingSpacing = draggingBp.plant.cells_spacing ?? 1;
+
+        return currentBedPlants.some((bp) => {
+          if (bp.bed_id !== bedId || bp.id === draggingBpId) return false;
+          if (!bp.plant) return false;
+
+          const neighborSpacing = bp.plant.cells_spacing ?? 1;
+          const dx = Math.abs(bp.cell_x - cellX);
+          const dy = Math.abs(bp.cell_y - cellY);
+
+          // Rastlina A zasede draggingSpacing × draggingSpacing celice
+          // Rastlina B zasede neighborSpacing × neighborSpacing celice
+          // Prekrivanje: kdor koli zasede prostor kjer je drugi
+          const aOverlapsB = dx < draggingSpacing && dy < draggingSpacing;
+          const bOverlapsA = dx < neighborSpacing && dy < neighborSpacing;
+
+          return aOverlapsB || bOverlapsA;
+        });
+      },
+      [], // Namerno prazno — vedno bere iz refs
+    );
+
+    const checkAroundSpacingCollision = useCallback(
+      (
+        draggingBpId: string,
+        bedId: string,
+        cellX: number,
+        cellY: number,
+      ): boolean => {
+        const currentBedPlants = bedPlantsRef.current;
+        const draggingBp = currentBedPlants.find(
+          (bp) => bp.id === draggingBpId,
+        );
+        if (!draggingBp?.plant) return false;
+
+        const draggingAround = draggingBp.plant.around_cells_spacing ?? 0;
+
+        return currentBedPlants.some((bp) => {
+          if (bp.bed_id !== bedId || bp.id === draggingBpId) return false;
+          if (!bp.plant) return false;
+
+          const neighborAround = bp.plant.around_cells_spacing ?? 0;
+          const dx = Math.abs(bp.cell_x - cellX);
+          const dy = Math.abs(bp.cell_y - cellY);
+
+          const aInNeighborZone = dx < neighborAround && dy < neighborAround;
+          const bInDraggingZone = dx < draggingAround && dy < draggingAround;
+
+          return aInNeighborZone || bInDraggingZone;
+        });
+      },
+      [],
     );
 
     const updatePlantDragPos = useCallback(
@@ -414,6 +479,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       ) => {
         const bed = beds.find((b) => b.id === state.bedId);
         if (!bed) return;
+
         const rect = containerRef.current!.getBoundingClientRect();
         const z = zoomRef.current;
         const p = panRef.current;
@@ -429,49 +495,143 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           0,
           bed.height * 2 - 1,
         );
+
         setDraggingPlantPos({ cellX: newCellX, cellY: newCellY });
         setInteraction({ ...state, cellX: newCellX, cellY: newCellY });
-        //preveri slabe sosede ──
-        const bad = getBadNeighborInfo(
-          state.bedPlantId,
-          state.bedId,
-          newCellX,
-          newCellY,
-        );
+
         const { isBad, badNeighborNames, currentBadNames } = getBadNeighborInfo(
           state.bedPlantId,
           state.bedId,
           newCellX,
           newCellY,
         );
-        setIsBadDrop(isBad);
+        const hasSpaceCollision = checkSpaceCollision(
+          state.bedPlantId,
+          state.bedId,
+          newCellX,
+          newCellY,
+        );
+        setIsSpaceCollision(hasSpaceCollision);
+        setIsBadDrop(isBad || hasSpaceCollision);
 
-        if (isBad && badNeighborNames.length > 0) {
-          // Pozicija tooltipa — nad rastlino na canvasu
-          const bed = beds.find((b) => b.id === state.bedId);
-          if (bed) {
-            const rect = containerRef.current!.getBoundingClientRect();
-            const z = zoomRef.current;
-            const p = panRef.current;
-            const tooltipX =
-              rect.left + p.x + (bed.x * CELL + newCellX * SUBCELL) * z;
-            const tooltipY =
-              rect.top + p.y + (bed.y * CELL + newCellY * SUBCELL) * z - 12;
-            setDragTooltip({
-              x: tooltipX,
-              y: tooltipY,
-              badNeighborNames,
-              currentBadNames,
-            });
-          }
+        const hasAroundCollision =
+          !hasSpaceCollision &&
+          checkAroundSpacingCollision(
+            state.bedPlantId,
+            state.bedId,
+            newCellX,
+            newCellY,
+          );
+
+        setIsSpaceCollision(hasSpaceCollision);
+        setIsAroundCollision(hasAroundCollision);
+        setIsBadDrop(isBad || hasSpaceCollision);
+
+        const tooltipX =
+          rect.left + p.x + (bed.x * CELL + newCellX * SUBCELL) * z;
+        const tooltipY =
+          rect.top + p.y + (bed.y * CELL + newCellY * SUBCELL) * z - 12;
+
+        if (hasSpaceCollision) {
+          setDragTooltip({
+            x: tooltipX,
+            y: tooltipY,
+            badNeighborNames: [],
+            currentBadNames: ["🚫 Ni prostora — celica je zasedena"],
+          });
+        } else if (hasAroundCollision) {
+          setDragTooltip({
+            x: tooltipX,
+            y: tooltipY,
+            badNeighborNames: [],
+            currentBadNames: ["⚠️ Preblizu drugi rastlini"],
+          });
+        } else if (isBad && badNeighborNames.length > 0) {
+          setDragTooltip({
+            x: tooltipX,
+            y: tooltipY,
+            badNeighborNames,
+            currentBadNames,
+          });
         } else {
           setDragTooltip(null);
         }
       },
-      [beds, getBadNeighborInfo],
+      [
+        beds,
+        getBadNeighborInfo,
+        checkSpaceCollision,
+        checkAroundSpacingCollision,
+      ],
     );
 
-    // ── Touch ───────────────────────────────────────────────────────────────
+    const commitPlantDrop = useCallback(
+      async (state: Extract<InteractionState, { type: "movingPlant" }>) => {
+        setDragTooltip(null);
+        setInteraction({ type: "idle" });
+        setDraggingPlantPos(null);
+        setIsSpaceCollision(false);
+        setIsAroundCollision(false);
+
+        // Preveri svež isBadDrop — če je slab sosed ali prostor zaseden
+        const hasSpaceCollision = checkSpaceCollision(
+          state.bedPlantId,
+          state.bedId,
+          state.cellX,
+          state.cellY,
+        );
+        const { isBad } = getBadNeighborInfo(
+          state.bedPlantId,
+          state.bedId,
+          state.cellX,
+          state.cellY,
+        );
+
+        setIsBadDrop(false);
+
+        if ((isBad || hasSpaceCollision) && !allowBadNeighborDrop) {
+          // Vrni na prvotno mesto — ne shranimo
+          return;
+        }
+
+        // Optimistično posodobi UI
+        setLocalPlantOverrides((prev) => ({
+          ...prev,
+          [state.bedPlantId]: { cellX: state.cellX, cellY: state.cellY },
+        }));
+
+        const { error } = await supabase
+          .from("bed_plants")
+          .update({ cell_x: state.cellX, cell_y: state.cellY })
+          .eq("id", state.bedPlantId);
+
+        if (error) {
+          console.error("Napaka pri premiku rastline:", error);
+          setLocalPlantOverrides((prev) => {
+            const next = { ...prev };
+            delete next[state.bedPlantId];
+            return next;
+          });
+        } else {
+          onPlantsChanged();
+          setTimeout(() => {
+            setLocalPlantOverrides((prev) => {
+              const next = { ...prev };
+              delete next[state.bedPlantId];
+              return next;
+            });
+          }, 1000);
+        }
+      },
+      [
+        onPlantsChanged,
+        allowBadNeighborDrop,
+        checkSpaceCollision,
+        getBadNeighborInfo,
+      ],
+    );
+
+    // ── Touch ─────────────────────────────────────────────────────────────
 
     const lastPinchDist = useRef<number | null>(null);
     const lastPinchMid = useRef<{ x: number; y: number } | null>(null);
@@ -760,7 +920,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       commitPlantDrop,
     ]);
 
-    // ── Mouse ───────────────────────────────────────────────────────────────
+    // ── Mouse ─────────────────────────────────────────────────────────────
 
     const onMouseDown = useCallback(
       (e: React.MouseEvent) => {
@@ -789,21 +949,17 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           });
           return;
         }
-        const touchedBed = beds.find((b) => {
-          const rect2 = containerRef.current!.getBoundingClientRect();
-          const lx = (e.clientX - rect2.left - pan.x) / zoom;
-          const ly = (e.clientY - rect2.top - pan.y) / zoom;
-          return (
+        const rect = containerRef.current!.getBoundingClientRect();
+        const lx = (e.clientX - rect.left - pan.x) / zoom;
+        const ly = (e.clientY - rect.top - pan.y) / zoom;
+        const touchedBed = beds.find(
+          (b) =>
             lx >= b.x * CELL &&
             lx <= (b.x + b.width) * CELL &&
             ly >= b.y * CELL &&
-            ly <= (b.y + b.height) * CELL
-          );
-        });
+            ly <= (b.y + b.height) * CELL,
+        );
         if (touchedBed) {
-          const rect2 = containerRef.current!.getBoundingClientRect();
-          const lx = (e.clientX - rect2.left - pan.x) / zoom;
-          const ly = (e.clientY - rect2.top - pan.y) / zoom;
           const bx = touchedBed.x * CELL,
             by = touchedBed.y * CELL;
           const bw = touchedBed.width * CELL,
@@ -943,11 +1099,10 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       }
     }, [interaction, draft, beds, syncBedToSupabase, commitPlantDrop]);
 
+    // Window-level mouseup/touchend za drop ko je miška izven elementa
     useEffect(() => {
       const handleMouseUp = () => {
-        if (interaction.type === "movingPlant") {
-          commitPlantDrop(interaction);
-        }
+        if (interaction.type === "movingPlant") commitPlantDrop(interaction);
       };
       window.addEventListener("mouseup", handleMouseUp);
       return () => window.removeEventListener("mouseup", handleMouseUp);
@@ -955,9 +1110,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     useEffect(() => {
       const handleTouchEnd = () => {
-        if (interaction.type === "movingPlant") {
-          commitPlantDrop(interaction);
-        }
+        if (interaction.type === "movingPlant") commitPlantDrop(interaction);
       };
       window.addEventListener("touchend", handleTouchEnd);
       return () => window.removeEventListener("touchend", handleTouchEnd);
@@ -967,6 +1120,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       e.preventDefault();
       setZoom((z) => clamp(z - e.deltaY * 0.001, 0.3, 2.5));
     }, []);
+
+    // ── Draft potrdi / prekliči ───────────────────────────────────────────
 
     const confirmDraft = async () => {
       if (!draft) return;
@@ -999,31 +1154,33 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       setDraft(null);
       setInteraction({ type: "idle" });
     };
+
     const draftNorm = draft ? normalizeDraft(draft) : null;
     const isDraggingPlant = interaction.type === "movingPlant";
 
+    // ── Render ────────────────────────────────────────────────────────────
+
     return (
       <div
-        className="relative w-full h-full overflow-hidden bg-stone-100"
-        ref={containerRef}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onContextMenu={onContextMenu}
-        onTouchStart={onTouchStartWithLongPress}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        onWheel={onWheel}
         style={{
-          cursor: isDraggingPlant
-            ? "grabbing"
-            : mode === "pan"
-              ? "grab"
-              : "crosshair",
+          position: "relative",
+          width: "100%",
+          height: "100%",
+          overflow: "hidden",
         }}
       >
         {/* Zoom buttons */}
-        <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            zIndex: 20,
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+          }}
+        >
           <button
             onClick={() => setZoom((z) => clamp(z + 0.15, 0.3, 2.5))}
             className="w-9 h-9 bg-white rounded-lg shadow text-lg flex items-center justify-center hover:bg-stone-50"
@@ -1051,412 +1208,440 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
         {/* Transformed canvas */}
         <div
+          ref={containerRef}
+          onMouseDown={onMouseDown}
+          onMouseMove={onMouseMove}
+          onMouseUp={onMouseUp}
+          onContextMenu={onContextMenu}
+          onTouchStart={onTouchStartWithLongPress}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onWheel={onWheel}
           style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: "0 0",
-            width: COLS * CELL,
-            height: ROWS * CELL,
-            position: "absolute",
+            width: "100%",
+            height: "100%",
+            cursor:
+              mode === "draw"
+                ? "crosshair"
+                : isDraggingPlant
+                  ? "grabbing"
+                  : "grab",
             touchAction: "none",
+            userSelect: "none",
           }}
         >
-          {/* Grid lines */}
-          <svg
-            width={COLS * CELL}
-            height={ROWS * CELL}
-            className="absolute inset-0 pointer-events-none"
+          <div
+            style={{
+              position: "absolute",
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: "0 0",
+              width: COLS * CELL,
+              height: ROWS * CELL,
+            }}
           >
-            {Array.from({ length: COLS + 1 }).map((_, i) => (
-              <line
-                key={`v${i}`}
-                x1={i * CELL}
-                y1={0}
-                x2={i * CELL}
-                y2={ROWS * CELL}
-                stroke="#d6d3d1"
-                strokeWidth="1"
-              />
-            ))}
-            {Array.from({ length: ROWS + 1 }).map((_, i) => (
-              <line
-                key={`h${i}`}
-                x1={0}
-                y1={i * CELL}
-                x2={COLS * CELL}
-                y2={i * CELL}
-                stroke="#d6d3d1"
-                strokeWidth="1"
-              />
-            ))}
-          </svg>
-
-          {beds.map((bed) => (
-            <div
-              key={bed.id}
-              onClick={() => {
-                if (mode === "pan") {
-                  selectBed(bed.id);
-                  onBedSelect(bed);
-                }
-              }}
-              style={{
-                position: "absolute",
-                left: bed.x * CELL,
-                top: bed.y * CELL,
-                width: bed.width * CELL,
-                height: bed.height * CELL,
-                border: `2px solid ${resizeCollision && interaction.type === "resizing" && interaction.bedId === bed.id ? "#dc2626" : selectedBedId === bed.id ? "#15803d" : "#86efac"}`,
-                backgroundColor:
-                  resizeCollision &&
-                  interaction.type === "resizing" &&
-                  interaction.bedId === bed.id
-                    ? bed.color.replace(")", ", 0.5)").replace("rgb", "rgba")
-                    : bed.color,
-                borderRadius: 6,
-                boxSizing: "border-box",
-              }}
+            {/* Grid lines */}
+            <svg
+              style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+              width={COLS * CELL}
+              height={ROWS * CELL}
             >
-              {/* Delete button */}
-              {mode === "draw" && (
-                <button
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
-                  onClick={async () => {
-                    const { error } = await supabase
-                      .from("beds")
-                      .delete()
-                      .eq("id", bed.id);
-                    if (error) {
-                      console.error("Delete error:", error);
-                      return;
-                    }
-                    removeBed(bed.id);
-                    selectBed(null);
-                  }}
-                  style={{
-                    position: "absolute",
-                    top: -8,
-                    right: -8,
-                    width: 20,
-                    height: 20,
-                    backgroundColor: "#dc2626",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "50%",
-                    fontSize: 12,
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    zIndex: 20,
-                    lineHeight: 1,
-                  }}
-                >
-                  ✕
-                </button>
-              )}
-              {/* Resize handles */}
-              {mode === "draw" && (
-                <>
-                  {(["nw", "ne", "sw", "se"] as ResizeHandle[]).map((h) => (
-                    <div
-                      key={h}
-                      style={{
-                        position: "absolute",
-                        width: 14,
-                        height: 14,
-                        backgroundColor: "#15803d",
-                        borderRadius: 3,
-                        top: h.includes("n") ? -6 : undefined,
-                        bottom: h.includes("s") ? -6 : undefined,
-                        left: h.includes("w") ? -6 : undefined,
-                        right: h.includes("e") ? -6 : undefined,
-                        cursor: `${h}-resize`,
-                        zIndex: 10,
-                      }}
-                    />
-                  ))}
-                </>
-              )}
-              {/* Pod-mreža */}
-              {mode === "draw" && (
-                <svg
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    pointerEvents: "none",
-                  }}
-                >
-                  {Array.from({ length: bed.width * 2 - 1 }).map((_, i) => (
-                    <line
-                      key={`sv${i}`}
-                      x1={(i + 1) * SUBCELL}
-                      y1={0}
-                      x2={(i + 1) * SUBCELL}
-                      y2={bed.height * CELL}
-                      stroke="rgba(0,0,0,0.10)"
-                      strokeWidth="0.5"
-                    />
-                  ))}
-                  {Array.from({ length: bed.height * 2 - 1 }).map((_, i) => (
-                    <line
-                      key={`sh${i}`}
-                      x1={0}
-                      y1={(i + 1) * SUBCELL}
-                      x2={bed.width * CELL}
-                      y2={(i + 1) * SUBCELL}
-                      stroke="rgba(0,0,0,0.10)"
-                      strokeWidth="0.5"
-                    />
-                  ))}
-                </svg>
-              )}
+              {Array.from({ length: COLS + 1 }).map((_, i) => (
+                <line
+                  key={`v${i}`}
+                  x1={i * CELL}
+                  y1={0}
+                  x2={i * CELL}
+                  y2={ROWS * CELL}
+                  stroke="#e7e5e4"
+                  strokeWidth={1}
+                />
+              ))}
+              {Array.from({ length: ROWS + 1 }).map((_, i) => (
+                <line
+                  key={`h${i}`}
+                  x1={0}
+                  y1={i * CELL}
+                  x2={COLS * CELL}
+                  y2={i * CELL}
+                  stroke="#e7e5e4"
+                  strokeWidth={1}
+                />
+              ))}
+            </svg>
 
-              <span
+            {/* Gredice */}
+            {beds.map((bed) => (
+              <div
+                key={bed.id}
+                onClick={() => {
+                  if (mode === "pan") {
+                    selectBed(bed.id);
+                    onBedSelect(bed);
+                  }
+                }}
                 style={{
                   position: "absolute",
-                  bottom: 4,
-                  left: 0,
-                  right: 0,
-                  textAlign: "center",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: "#166534",
-                  pointerEvents: "none",
-                  overflow: "hidden",
-                  whiteSpace: "nowrap",
-                  textOverflow: "ellipsis",
+                  left: bed.x * CELL,
+                  top: bed.y * CELL,
+                  width: bed.width * CELL,
+                  height: bed.height * CELL,
+                  border: `2px solid ${
+                    resizeCollision &&
+                    interaction.type === "resizing" &&
+                    interaction.bedId === bed.id
+                      ? "#dc2626"
+                      : selectedBedId === bed.id
+                        ? "#15803d"
+                        : "#86efac"
+                  }`,
+                  backgroundColor:
+                    resizeCollision &&
+                    interaction.type === "resizing" &&
+                    interaction.bedId === bed.id
+                      ? bed.color.replace(")", ", 0.5)").replace("rgb", "rgba")
+                      : bed.color,
+                  borderRadius: 6,
+                  boxSizing: "border-box",
                 }}
               >
-                {bed.name}
-              </span>
+                {/* Delete button */}
+                {mode === "draw" && (
+                  <button
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onClick={async () => {
+                      const { error } = await supabase
+                        .from("beds")
+                        .delete()
+                        .eq("id", bed.id);
+                      if (error) {
+                        console.error("Delete error:", error);
+                        return;
+                      }
+                      removeBed(bed.id);
+                      selectBed(null);
+                    }}
+                    style={{
+                      position: "absolute",
+                      top: -8,
+                      right: -8,
+                      width: 20,
+                      height: 20,
+                      backgroundColor: "#dc2626",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "50%",
+                      fontSize: 12,
+                      fontWeight: "bold",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      zIndex: 20,
+                      lineHeight: 1,
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
 
-              {/* Posajene rastline */}
-              {bedPlants
-                .filter((bp) => bp.bed_id === bed.id)
-                .map((bp) => {
-                  const spacing = bp.plant?.cells_spacing ?? 1;
-                  const size = spacing * SUBCELL;
-                  const isBeingDragged =
-                    isDraggingPlant &&
-                    interaction.type === "movingPlant" &&
-                    interaction.bedPlantId === bp.id;
-                  const override = localPlantOverrides[bp.id];
-                  const displayX =
-                    isBeingDragged && draggingPlantPos
-                      ? draggingPlantPos.cellX
-                      : override
-                        ? override.cellX
-                        : bp.cell_x;
-                  const displayY =
-                    isBeingDragged && draggingPlantPos
-                      ? draggingPlantPos.cellY
-                      : override
-                        ? override.cellY
-                        : bp.cell_y;
-
-                  return (
-                    <React.Fragment key={bp.id}>
-                      {/* Zasedeno območje */}
+                {/* Resize handles */}
+                {mode === "draw" && (
+                  <>
+                    {(["nw", "ne", "sw", "se"] as ResizeHandle[]).map((h) => (
                       <div
+                        key={h}
                         style={{
                           position: "absolute",
-                          left: displayX * SUBCELL,
-                          top: displayY * SUBCELL,
-                          width: size,
-                          height: size,
-                          backgroundColor: isBeingDragged
-                            ? isBadDrop
-                              ? "rgba(239,68,68,0.25)" // rdeča za slab sosed
-                              : "rgba(134,239,172,0.4)"
-                            : "rgba(134,239,172,0.15)",
-                          border: isBeingDragged
-                            ? isBadDrop
-                              ? "1.5px dashed #dc2626" // rdeča za slab sosed
-                              : "1.5px dashed #16a34a"
-                            : "1px dashed rgba(22,163,74,0.3)",
-                          pointerEvents: "none",
-                          zIndex: isBeingDragged ? 10 : 4,
-                          transition: isBeingDragged
-                            ? "none"
-                            : "left 0.1s, top 0.1s",
+                          width: 10,
+                          height: 10,
+                          backgroundColor: "white",
+                          border: "2px solid #15803d",
+                          borderRadius: 2,
+                          ...(h.includes("n") ? { top: -5 } : { bottom: -5 }),
+                          ...(h.includes("w") ? { left: -5 } : { right: -5 }),
+                          cursor: `${h}-resize`,
+                          zIndex: 10,
                         }}
                       />
-                      {/* Ikona rastline */}
-                      <div
-                        onMouseDown={(e) => {
-                          if (e.button !== 0 || mode !== "pan") return;
-                          e.stopPropagation();
-                          // long press za miško — začni timer
-                          longPressTimer.current = setTimeout(() => {
-                            startPlantDrag(bp, e.clientX, e.clientY);
-                          }, LONG_PRESS_MS);
-                        }}
-                        onMouseUp={(e) => {
-                          // Samo počisti timer če drag ŠE NI aktiven (navaden klik)
-                          // Če je drag aktiven, naj window listener naredi drop
-                          if (interaction.type !== "movingPlant") {
-                            clearLongPress();
-                            e.stopPropagation();
-                          }
-                          // Med dragom NE kličemo stopPropagation -> window mouseup ujame drop
-                        }}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          openContextMenu(e.clientX, e.clientY, {
-                            plantId: bp.id,
-                          });
-                        }}
-                        onTouchStart={(e) => {
-                          e.stopPropagation();
-                          if (mode !== "pan") return;
-                          const touch = e.touches[0];
-                          longPressTimer.current = setTimeout(() => {
-                            startPlantDrag(bp, touch.clientX, touch.clientY);
-                          }, LONG_PRESS_MS);
-                        }}
-                        onTouchEnd={(e) => {
-                          // Samo počisti timer če drag ŠE NI aktiven (navaden klik)
-                          // Če je drag aktiven, naj window listener naredi drop
-                          if (interaction.type !== "movingPlant") {
-                            clearLongPress();
-                            e.stopPropagation();
-                          }
-                        }}
-                        style={{
-                          position: "absolute",
-                          left: displayX * SUBCELL,
-                          top: displayY * SUBCELL,
-                          width: SUBCELL,
-                          height: SUBCELL,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 14,
-                          pointerEvents: "auto",
-                          zIndex: isBeingDragged ? 11 : 5,
-                          cursor: isBeingDragged ? "grabbing" : "grab",
-                          filter: isBeingDragged
-                            ? isBadDrop
-                              ? "drop-shadow(0 2px 8px rgba(220,38,38,0.5))" // ← rdeč shadow
-                              : "drop-shadow(0 2px 6px rgba(0,0,0,0.25))"
-                            : "none",
-                          transition: isBeingDragged
-                            ? "none"
-                            : "left 0.1s, top 0.1s",
-                          opacity: isBeingDragged ? 0.9 : 1,
-                        }}
-                      >
-                        {bp.plant?.img}
-                      </div>
-                    </React.Fragment>
-                  );
-                })}
-            </div>
-          ))}
+                    ))}
+                  </>
+                )}
 
-          {draftNorm && (
-            <div
-              style={{
-                position: "absolute",
-                left: draftNorm.x * CELL,
-                top: draftNorm.y * CELL,
-                width: draftNorm.width * CELL,
-                height: draftNorm.height * CELL,
-                backgroundColor: hasCollision(draftNorm)
-                  ? "rgba(239,68,68,0.25)"
-                  : "rgba(134,239,172,0.35)",
-                border: hasCollision(draftNorm)
-                  ? "2px dashed #dc2626"
-                  : "2px dashed #16a34a",
-                borderRadius: 6,
-                pointerEvents: "none",
-              }}
-            />
-          )}
+                {/* Pod-mreža */}
+                {mode === "draw" && (
+                  <svg
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      pointerEvents: "none",
+                    }}
+                    width={bed.width * CELL}
+                    height={bed.height * CELL}
+                  >
+                    {Array.from({ length: bed.width * 2 - 1 }).map((_, i) => (
+                      <line
+                        key={`sv${i}`}
+                        x1={(i + 1) * SUBCELL}
+                        y1={0}
+                        x2={(i + 1) * SUBCELL}
+                        y2={bed.height * CELL}
+                        stroke="rgba(0,0,0,0.1)"
+                        strokeWidth={0.5}
+                        strokeDasharray="3,3"
+                      />
+                    ))}
+                    {Array.from({ length: bed.height * 2 - 1 }).map((_, i) => (
+                      <line
+                        key={`sh${i}`}
+                        x1={0}
+                        y1={(i + 1) * SUBCELL}
+                        x2={bed.width * CELL}
+                        y2={(i + 1) * SUBCELL}
+                        stroke="rgba(0,0,0,0.1)"
+                        strokeWidth={0.5}
+                        strokeDasharray="3,3"
+                      />
+                    ))}
+                  </svg>
+                )}
+
+                <span
+                  style={{
+                    position: "absolute",
+                    bottom: 2,
+                    left: 4,
+                    fontSize: 10,
+                    color: "rgba(0,0,0,0.4)",
+                    pointerEvents: "none",
+                    userSelect: "none",
+                  }}
+                >
+                  {bed.name}
+                </span>
+
+                {/* Posajene rastline */}
+                {bedPlants
+                  .filter((bp) => bp.bed_id === bed.id)
+                  .map((bp) => {
+                    const spacing = bp.plant?.cells_spacing ?? 1;
+                    const size = spacing * SUBCELL;
+                    const isBeingDragged =
+                      isDraggingPlant &&
+                      interaction.type === "movingPlant" &&
+                      interaction.bedPlantId === bp.id;
+                    const override = localPlantOverrides[bp.id];
+                    const displayX =
+                      isBeingDragged && draggingPlantPos
+                        ? draggingPlantPos.cellX
+                        : override
+                          ? override.cellX
+                          : bp.cell_x;
+                    const displayY =
+                      isBeingDragged && draggingPlantPos
+                        ? draggingPlantPos.cellY
+                        : override
+                          ? override.cellY
+                          : bp.cell_y;
+
+                    return (
+                      <div
+                        key={bp.id}
+                        style={{ position: "absolute", pointerEvents: "none" }}
+                      >
+                        {/* Zasedeno območje */}
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: displayX * SUBCELL,
+                            top: displayY * SUBCELL,
+                            width: size,
+                            height: size,
+                            backgroundColor: isBeingDragged
+                              ? isBadDrop
+                                ? "rgba(239,68,68,0.25)"
+                                : "rgba(134,239,172,0.4)"
+                              : "rgba(134,239,172,0.15)",
+                            border: isBeingDragged
+                              ? isSpaceCollision
+                                ? "1.5px dashed #dc2626" // rdeča — prostor zaseden
+                                : isAroundCollision
+                                  ? "1.5px dashed #eab308" // rumena — preblizu
+                                  : isBadDrop
+                                    ? "1.5px dashed #eab308" // rumena — slab sosed
+                                    : "1.5px dashed #16a34a" // zelena — ok
+                              : "1px dashed rgba(22,163,74,0.3)",
+                            borderRadius: 4,
+                            transition: isBeingDragged
+                              ? "none"
+                              : "left 0.1s, top 0.1s",
+                            pointerEvents: "none",
+                          }}
+                        />
+                        {/* Ikona rastline */}
+                        <div
+                          onMouseDown={(e) => {
+                            if (e.button !== 0 || mode !== "pan") return;
+                            e.stopPropagation();
+                            longPressTimer.current = setTimeout(() => {
+                              startPlantDrag(bp, e.clientX, e.clientY);
+                            }, LONG_PRESS_MS);
+                          }}
+                          onMouseUp={(e) => {
+                            if (interaction.type !== "movingPlant") {
+                              clearLongPress();
+                              e.stopPropagation();
+                            }
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openContextMenu(e.clientX, e.clientY, {
+                              plantId: bp.id,
+                            });
+                          }}
+                          onTouchStart={(e) => {
+                            e.stopPropagation();
+                            if (mode !== "pan") return;
+                            const touch = e.touches[0];
+                            longPressTimer.current = setTimeout(() => {
+                              startPlantDrag(bp, touch.clientX, touch.clientY);
+                            }, LONG_PRESS_MS);
+                          }}
+                          onTouchEnd={(e) => {
+                            if (interaction.type !== "movingPlant") {
+                              clearLongPress();
+                              e.stopPropagation();
+                            }
+                          }}
+                          style={{
+                            position: "absolute",
+                            left: displayX * SUBCELL,
+                            top: displayY * SUBCELL,
+                            width: SUBCELL,
+                            height: SUBCELL,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 14,
+                            pointerEvents: "auto",
+                            zIndex: isBeingDragged ? 11 : 5,
+                            cursor: isBeingDragged ? "grabbing" : "grab",
+                            filter: isBeingDragged
+                              ? isBadDrop
+                                ? "drop-shadow(0 2px 8px rgba(220,38,38,0.5))"
+                                : "drop-shadow(0 2px 6px rgba(0,0,0,0.25))"
+                              : "none",
+                            transition: isBeingDragged
+                              ? "none"
+                              : "left 0.1s, top 0.1s",
+                            opacity: isBeingDragged ? 0.9 : 1,
+                          }}
+                        >
+                          {bp.plant?.img}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            ))}
+
+            {/* Draft gredica */}
+            {draftNorm && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: draftNorm.x * CELL,
+                  top: draftNorm.y * CELL,
+                  width: draftNorm.width * CELL,
+                  height: draftNorm.height * CELL,
+                  border: "2px dashed #15803d",
+                  backgroundColor: "rgba(134,239,172,0.2)",
+                  borderRadius: 6,
+                  pointerEvents: "none",
+                }}
+              />
+            )}
+          </div>
         </div>
 
         {/* Context menu */}
         {contextMenu && (
           <div
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
             style={{
               position: "absolute",
               left: contextMenu.x,
               top: contextMenu.y,
               zIndex: 50,
-              transform: "translate(-50%, -100%)",
+              backgroundColor: "white",
+              borderRadius: 10,
+              boxShadow: "0 4px 24px rgba(0,0,0,0.12)",
+              border: "1px solid #e7e5e4",
+              minWidth: 180,
+              overflow: "hidden",
             }}
-            onMouseDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
           >
-            <div className="bg-white rounded-xl shadow-xl border border-stone-200 overflow-hidden min-w-45">
-              {contextMenu.type === "cell" && (
+            {contextMenu.type === "cell" && (
+              <button
+                onClick={() => {
+                  if (contextMenu.cellX == null || contextMenu.cellY == null)
+                    return;
+                  onPlantCell(
+                    contextMenu.bedId,
+                    contextMenu.cellX,
+                    contextMenu.cellY,
+                  );
+                  setContextMenu(null);
+                }}
+                className="w-full px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2"
+              >
+                🌱 Posadi rastlino...
+              </button>
+            )}
+            {contextMenu.type === "plant" && (
+              <>
                 <button
                   onClick={() => {
-                    if (contextMenu.cellX == null || contextMenu.cellY == null)
-                      return;
-                    onPlantCell(
-                      contextMenu.bedId,
-                      contextMenu.cellX,
-                      contextMenu.cellY,
-                    );
+                    console.log("Plant info menu for:", contextMenu.bedPlantId);
                     setContextMenu(null);
                   }}
                   className="w-full px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2"
                 >
-                  🌱 Posadi rastlino...
+                  ℹ️ Info o rastlini
                 </button>
-              )}
-              {contextMenu.type === "plant" && (
-                <>
-                  <button
-                    onClick={() => {
-                      console.log(
-                        "Plant info menu for:",
-                        contextMenu.bedPlantId,
+                <button
+                  onClick={async () => {
+                    if (!contextMenu.bedPlantId) return;
+                    const { error } = await supabase
+                      .from("bed_plants")
+                      .delete()
+                      .eq("id", contextMenu.bedPlantId);
+                    if (error) {
+                      console.error(
+                        "Napaka pri brisanju rastline iz beda:",
+                        error,
                       );
-                      setContextMenu(null);
-                    }}
-                    className="w-full px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2"
-                  >
-                    ℹ️ Info o rastlini
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!contextMenu.bedPlantId) return;
-                      const { error } = await supabase
-                        .from("bed_plants")
-                        .delete()
-                        .eq("id", contextMenu.bedPlantId);
-                      if (error) {
-                        console.error(
-                          "Napaka pri brisanju rastline iz beda:",
-                          error,
-                        );
-                        return;
-                      }
-                      const bedPlant = bedPlants.find(
-                        (bp) => bp.id === contextMenu.bedPlantId,
-                      );
-                      if (bedPlant) onReturnToInventory(bedPlant.plant_id);
-                      onPlantsChanged();
-                      setContextMenu(null);
-                    }}
-                    className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-stone-100"
-                  >
-                    🗑️ Odstrani rastlino
-                  </button>
-                </>
-              )}
-            </div>
+                      return;
+                    }
+                    const bedPlant = bedPlants.find(
+                      (bp) => bp.id === contextMenu.bedPlantId,
+                    );
+                    if (bedPlant) onReturnToInventory(bedPlant.plant_id);
+                    onPlantsChanged();
+                    setContextMenu(null);
+                  }}
+                  className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-stone-100"
+                >
+                  🗑️ Odstrani rastlino
+                </button>
+              </>
+            )}
           </div>
         )}
 
-        {/* Bad neighbor tooltip med dragom */}
+        {/* Bad neighbor / space collision tooltip med dragom */}
         {dragTooltip && (
           <div
             style={{
@@ -1484,12 +1669,14 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                   fontSize: 11,
                   fontWeight: 700,
                   color: "#dc2626",
-                  marginBottom: 6,
+                  marginBottom: dragTooltip.badNeighborNames.length > 0 ? 6 : 0,
                   textTransform: "uppercase",
                   letterSpacing: "0.05em",
                 }}
               >
-                ⚠️ Slabi sosedje v gredici
+                {dragTooltip.badNeighborNames.length > 0
+                  ? "⚠️ Slabi sosedje v gredici"
+                  : dragTooltip.currentBadNames[0]}
               </div>
               {dragTooltip.badNeighborNames.map((name) => {
                 const isCurrent = dragTooltip.currentBadNames.includes(name);
@@ -1508,17 +1695,19 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                   </div>
                 );
               })}
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "#a8a29e",
-                  marginTop: 6,
-                  borderTop: "1px solid #f5f5f4",
-                  paddingTop: 5,
-                }}
-              >
-                Boldano = trenutno preblizu
-              </div>
+              {dragTooltip.badNeighborNames.length > 0 && (
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "#a8a29e",
+                    marginTop: 6,
+                    borderTop: "1px solid #f5f5f4",
+                    paddingTop: 5,
+                  }}
+                >
+                  Boldano = trenutno preblizu
+                </div>
+              )}
             </div>
             {/* Puščica navzdol */}
             <div
@@ -1537,20 +1726,32 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         {/* Draft confirm bar */}
         {draft && interaction.type !== "drawing" && (
           <div
-            className="absolute bottom-0 left-0 right-0 flex gap-3 p-4 bg-white border-t border-stone-200 shadow-lg z-20"
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute",
+              bottom: 16,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 30,
+              backgroundColor: "white",
+              borderRadius: 12,
+              boxShadow: "0 4px 24px rgba(0,0,0,0.12)",
+              padding: "10px 16px",
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+            }}
           >
             <button
               onClick={cancelDraft}
-              className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-600 font-semibold text-base"
+              className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg"
             >
               ✗ Prekliči
             </button>
             <button
               onClick={confirmDraft}
-              disabled={!draftNorm || hasCollision(draftNorm)}
-              className={`flex-1 py-3 rounded-xl font-semibold text-base transition-colors ${draftNorm && hasCollision(draftNorm) ? "bg-stone-200 text-stone-400 cursor-not-allowed" : "bg-green-600 text-white"}`}
+              className="px-4 py-2 text-sm bg-green-600 text-white hover:bg-green-700 rounded-lg"
             >
               ✓ Potrdi gredico
             </button>
