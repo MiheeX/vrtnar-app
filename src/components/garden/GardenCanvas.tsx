@@ -137,6 +137,13 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     >({});
     const [isBadDrop, setIsBadDrop] = useState(false);
 
+    const [dragTooltip, setDragTooltip] = useState<{
+      x: number;
+      y: number;
+      badNeighborNames: string[];
+      currentBadNames: string[];
+    } | null>(null);
+
     useImperativeHandle(ref, () => ({
       reset: () => {
         setDraft(null);
@@ -274,6 +281,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const startPlantDrag = useCallback(
       (bp: BedPlant, clientX: number, clientY: number) => {
         const bed = beds.find((b) => b.id === bp.bed_id);
+        setDragTooltip(null);
         if (!bed) return;
         setDraggingPlantPos({ cellX: bp.cell_x, cellY: bp.cell_y });
         setInteraction({
@@ -291,6 +299,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     const commitPlantDrop = useCallback(
       async (state: Extract<InteractionState, { type: "movingPlant" }>) => {
+        setDragTooltip(null);
         //če je slab sosed, vrni na prvotno mesto ──
         if (isBadDrop && !allowBadNeighborDrop) {
           setInteraction({ type: "idle" });
@@ -327,47 +336,72 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           }, 1000);
         }
       },
-      [onPlantsChanged, isBadDrop], // ← dodaj isBadDrop v deps
+      [onPlantsChanged, isBadDrop],
     );
 
-    const checkBadNeighbors = useCallback(
+    const getBadNeighborInfo = useCallback(
       (
         draggingBpId: string,
         bedId: string,
         cellX: number,
         cellY: number,
-      ): boolean => {
+      ): {
+        isBad: boolean;
+        badNeighborNames: string[];
+        currentBadNames: string[];
+      } => {
         const draggingBp = bedPlants.find((bp) => bp.id === draggingBpId);
-        if (!draggingBp?.plant) return false;
+        if (!draggingBp?.plant)
+          return { isBad: false, badNeighborNames: [], currentBadNames: [] };
 
-        const neighbors = bedPlants.filter(
-          (bp) => bp.bed_id === bedId && bp.id !== draggingBpId,
+        // Vse potencialno slabe rastline za to vrsto (ne glede na razdaljo)
+        const allBadNeighborIds = plantNeighbors
+          .filter(
+            (pn) =>
+              pn.relationship === "bad" &&
+              (pn.plant_id === draggingBp.plant_id ||
+                pn.neighbor_id === draggingBp.plant_id),
+          )
+          .map((pn) =>
+            pn.plant_id === draggingBp.plant_id ? pn.neighbor_id : pn.plant_id,
+          );
+
+        // Vse slabe rastline ki so dejansko v tej gredici
+        const allBadInBed = bedPlants.filter(
+          (bp) =>
+            bp.bed_id === bedId &&
+            bp.id !== draggingBpId &&
+            allBadNeighborIds.includes(bp.plant_id),
         );
 
-        for (const neighbor of neighbors) {
-          if (!neighbor.plant) continue;
+        const badNeighborNames = [
+          ...new Set(
+            allBadInBed.map(
+              (bp): string => `${bp.plant?.img ?? ""} ${bp.plant?.name ?? ""}`,
+            ),
+          ),
+        ];
 
+        // Slabe rastline ki so trenutno v dosegu (glede na razdaljo)
+        const currentBadNames: string[] = [];
+        for (const neighbor of allBadInBed) {
+          if (!neighbor.plant) continue;
           const spacing = draggingBp.plant.cells_spacing ?? 1;
           const neighborSpacing = neighbor.plant.cells_spacing ?? 1;
           const totalSpacing = spacing + neighborSpacing;
-
           const dx = Math.abs(neighbor.cell_x - cellX);
           const dy = Math.abs(neighbor.cell_y - cellY);
-
           if (dx < totalSpacing && dy < totalSpacing) {
-            // Preveri v plant_neighbors tabeli
-            const isBad = plantNeighbors.some(
-              (pn) =>
-                pn.relationship === "bad" &&
-                ((pn.plant_id === draggingBp.plant_id &&
-                  pn.neighbor_id === neighbor.plant_id) ||
-                  (pn.plant_id === neighbor.plant_id &&
-                    pn.neighbor_id === draggingBp.plant_id)),
-            );
-            if (isBad) return true;
+            const label = `${neighbor.plant.img ?? ""} ${neighbor.plant.name}`;
+            if (!currentBadNames.includes(label)) currentBadNames.push(label);
           }
         }
-        return false;
+
+        return {
+          isBad: currentBadNames.length > 0,
+          badNeighborNames,
+          currentBadNames,
+        };
       },
       [bedPlants, plantNeighbors],
     );
@@ -398,15 +432,43 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         setDraggingPlantPos({ cellX: newCellX, cellY: newCellY });
         setInteraction({ ...state, cellX: newCellX, cellY: newCellY });
         //preveri slabe sosede ──
-        const bad = checkBadNeighbors(
+        const bad = getBadNeighborInfo(
           state.bedPlantId,
           state.bedId,
           newCellX,
           newCellY,
         );
-        setIsBadDrop(bad);
+        const { isBad, badNeighborNames, currentBadNames } = getBadNeighborInfo(
+          state.bedPlantId,
+          state.bedId,
+          newCellX,
+          newCellY,
+        );
+        setIsBadDrop(isBad);
+
+        if (isBad && badNeighborNames.length > 0) {
+          // Pozicija tooltipa — nad rastlino na canvasu
+          const bed = beds.find((b) => b.id === state.bedId);
+          if (bed) {
+            const rect = containerRef.current!.getBoundingClientRect();
+            const z = zoomRef.current;
+            const p = panRef.current;
+            const tooltipX =
+              rect.left + p.x + (bed.x * CELL + newCellX * SUBCELL) * z;
+            const tooltipY =
+              rect.top + p.y + (bed.y * CELL + newCellY * SUBCELL) * z - 12;
+            setDragTooltip({
+              x: tooltipX,
+              y: tooltipY,
+              badNeighborNames,
+              currentBadNames,
+            });
+          }
+        } else {
+          setDragTooltip(null);
+        }
       },
-      [beds, checkBadNeighbors],
+      [beds, getBadNeighborInfo],
     );
 
     // ── Touch ───────────────────────────────────────────────────────────────
@@ -1391,6 +1453,84 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                 </>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Bad neighbor tooltip med dragom */}
+        {dragTooltip && (
+          <div
+            style={{
+              position: "fixed",
+              left: dragTooltip.x,
+              top: dragTooltip.y,
+              transform: "translate(-50%, -100%)",
+              zIndex: 100,
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: "white",
+                border: "1.5px solid #dc2626",
+                borderRadius: 10,
+                padding: "8px 12px",
+                boxShadow: "0 4px 16px rgba(220,38,38,0.15)",
+                minWidth: 160,
+                maxWidth: 240,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "#dc2626",
+                  marginBottom: 6,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                ⚠️ Slabi sosedje v gredici
+              </div>
+              {dragTooltip.badNeighborNames.map((name) => {
+                const isCurrent = dragTooltip.currentBadNames.includes(name);
+                return (
+                  <div
+                    key={name}
+                    style={{
+                      fontSize: 13,
+                      color: isCurrent ? "#dc2626" : "#78716c",
+                      fontWeight: isCurrent ? 700 : 400,
+                      padding: "2px 0",
+                    }}
+                  >
+                    {isCurrent ? "🚫 " : "⚠️ "}
+                    {name}
+                  </div>
+                );
+              })}
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "#a8a29e",
+                  marginTop: 6,
+                  borderTop: "1px solid #f5f5f4",
+                  paddingTop: 5,
+                }}
+              >
+                Boldano = trenutno preblizu
+              </div>
+            </div>
+            {/* Puščica navzdol */}
+            <div
+              style={{
+                width: 0,
+                height: 0,
+                borderLeft: "6px solid transparent",
+                borderRight: "6px solid transparent",
+                borderTop: "6px solid #dc2626",
+                margin: "0 auto",
+              }}
+            />
           </div>
         )}
 
