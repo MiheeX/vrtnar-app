@@ -227,6 +227,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     // ── Gredice: kolizija in sync ─────────────────────────────────────────
 
+    // Preveri ali se nova gredica prekriva z obstoječimi
     const hasCollision = (
       norm: { x: number; y: number; width: number; height: number },
       excludeId?: string,
@@ -241,6 +242,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         );
       });
 
+    // Shrani posodobljene podatke gredice v Supabase
     const syncBedToSupabase = useCallback(
       async (id: string, updates: Partial<GardenBed>) => {
         const { error } = await supabase
@@ -254,6 +256,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     // ── Context menu ──────────────────────────────────────────────────────
 
+    // Odpre kontekstni meni na klik/long press — razlikuje med celico in rastlino
     const openContextMenu = useCallback(
       (clientX: number, clientY: number, options?: { plantId?: string }) => {
         if (mode !== "pan") return;
@@ -291,6 +294,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [mode, beds, pan, zoom, toSubCell],
     );
 
+    // Odpre context menu na desni klik miške
     const onContextMenu = useCallback(
       (e: React.MouseEvent) => {
         e.preventDefault();
@@ -299,6 +303,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [openContextMenu],
     );
 
+    // Počisti timer za long press
     const clearLongPress = useCallback(() => {
       if (longPressTimer.current) {
         clearTimeout(longPressTimer.current);
@@ -308,6 +313,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     // ── Drag & drop rastline ──────────────────────────────────────────────
 
+    // Začne vlečenje rastline — nastavi interaction state in resetira validacijo
     const startPlantDrag = useCallback(
       (bp: BedPlant, clientX: number, clientY: number) => {
         const bed = beds.find((b) => b.id === bp.bed_id);
@@ -402,7 +408,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [], // Namerno prazno — vedno bere iz refs
     );
 
-    // Vrne info o sosedih ki so preblizu
+    // Vrne seznam rastlin katerih around_cells_spacing cono dragging rastlina zaseda
     const getAroundCollisionInfo = useCallback(
       (
         draggingBpId: string,
@@ -426,12 +432,14 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           const neighborSize = bp.plant.cells_spacing ?? 1;
           const neighborAround = bp.plant.around_cells_spacing ?? 0;
 
+          // Dragging pravokotnik vs. around cona soseda (pas okoli cells_spacing)
           const inAroundZone =
             cellX < bp.cell_x + neighborSize + neighborAround &&
             cellX + draggingSize > bp.cell_x - neighborAround &&
             cellY < bp.cell_y + neighborSize + neighborAround &&
             cellY + draggingSize > bp.cell_y - neighborAround;
 
+          // Ni znotraj space cone (to pokriva checkSpaceCollision)
           const inSpaceZone =
             cellX < bp.cell_x + neighborSize &&
             cellX + draggingSize > bp.cell_x &&
@@ -485,48 +493,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [],
     );
 
-    const checkAroundSpacingCollision = useCallback(
-      (
-        draggingBpId: string,
-        bedId: string,
-        cellX: number,
-        cellY: number,
-      ): boolean => {
-        const currentBedPlants = bedPlantsRef.current;
-        const draggingBp = currentBedPlants.find(
-          (bp) => bp.id === draggingBpId,
-        );
-        if (!draggingBp?.plant) return false;
-
-        const draggingSize = draggingBp.plant.cells_spacing ?? 1;
-
-        return currentBedPlants.some((bp) => {
-          if (bp.bed_id !== bedId || bp.id === draggingBpId) return false;
-          if (!bp.plant) return false;
-
-          const neighborSize = bp.plant.cells_spacing ?? 1;
-          const neighborAround = bp.plant.around_cells_spacing ?? 0;
-
-          // Dragging pravokotnik vs. around cona soseda
-          const inAroundZone =
-            cellX < bp.cell_x + neighborSize + neighborAround &&
-            cellX + draggingSize > bp.cell_x - neighborAround &&
-            cellY < bp.cell_y + neighborSize + neighborAround &&
-            cellY + draggingSize > bp.cell_y - neighborAround;
-
-          // Ni znotraj space cone (to pokriva checkSpaceCollision)
-          const inSpaceZone =
-            cellX < bp.cell_x + neighborSize &&
-            cellX + draggingSize > bp.cell_x &&
-            cellY < bp.cell_y + neighborSize &&
-            cellY + draggingSize > bp.cell_y;
-
-          return inAroundZone && !inSpaceZone;
-        });
-      },
-      [],
-    );
-
+    // Posodobi pozicijo rastline med vlečenjem in izračuna tooltip validacije
     const updatePlantDragPos = useCallback(
       (
         clientX: number,
@@ -616,6 +583,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [beds, getBadNeighborInfo, checkSpaceCollision, getAroundCollisionInfo],
     );
 
+    // Zaključi premik rastline — shrani v Supabase ali vrne na prvotno mesto
     const commitPlantDrop = useCallback(
       async (state: Extract<InteractionState, { type: "movingPlant" }>) => {
         setDragTooltip(null);
@@ -687,6 +655,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const lastPinchDist = useRef<number | null>(null);
     const lastPinchMid = useRef<{ x: number; y: number } | null>(null);
 
+    // Obravnava začetek dotika — pinch zoom, risanje, premikanje gredice
     const onTouchStart = useCallback(
       (e: React.TouchEvent) => {
         if (e.touches.length === 2) {
@@ -782,6 +751,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [mode, beds, pan, zoom, toCell, draft, interaction, clearLongPress],
     );
 
+    // Wrapper za onTouchStart ki doda long press za context menu
     const onTouchStartWithLongPress = useCallback(
       (e: React.TouchEvent) => {
         if (e.touches.length === 1 && mode === "pan") {
@@ -795,6 +765,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [mode, openContextMenu, onTouchStart],
     );
 
+    // Obravnava premik prsta — pinch zoom, panning, risanje, premik gredice/rastline
     const onTouchMove = useCallback(
       (e: React.TouchEvent) => {
         clearLongPress();
@@ -925,6 +896,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       ],
     );
 
+    // Zaključi touch — shrani gredico ali zaključi drag rastline
     const onTouchEnd = useCallback(() => {
       clearLongPress();
       pendingDrawStart.current = null;
@@ -973,6 +945,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     // ── Mouse ─────────────────────────────────────────────────────────────
 
+    // Začne mouse interakcijo — panning, risanje gredice ali resize
     const onMouseDown = useCallback(
       (e: React.MouseEvent) => {
         if (contextMenu) {
@@ -1057,6 +1030,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [mode, beds, pan, zoom, toCell, draft, contextMenu],
     );
 
+    // Obravnava premik miške — panning, risanje, premik/resize gredice, drag rastline
     const onMouseMove = useCallback(
       (e: React.MouseEvent) => {
         if (interaction.type === "movingPlant") {
@@ -1118,6 +1092,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [interaction, toCell, updateBed, pan, zoom, beds, updatePlantDragPos],
     );
 
+    // Zaključi mouse interakcijo — shrani gredico ali zaključi drag rastline
     const onMouseUp = useCallback(() => {
       if (interaction.type === "movingPlant") {
         commitPlantDrop(interaction);
@@ -1167,6 +1142,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       return () => window.removeEventListener("touchend", handleTouchEnd);
     }, [interaction, commitPlantDrop]);
 
+    // Zoom s koleškom miške
     const onWheel = useCallback((e: React.WheelEvent) => {
       e.preventDefault();
       setZoom((z) => clamp(z - e.deltaY * 0.001, 0.3, 2.5));
@@ -1174,6 +1150,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     // ── Draft potrdi / prekliči ───────────────────────────────────────────
 
+    // Shrani novo gredico v Supabase in doda v store
     const confirmDraft = async () => {
       if (!draft) return;
       const n = normalizeDraft(draft);
@@ -1201,6 +1178,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       setInteraction({ type: "idle" });
     };
 
+    // Prekliči risanje nove gredice
     const cancelDraft = () => {
       setDraft(null);
       setInteraction({ type: "idle" });
@@ -1213,12 +1191,30 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     return (
       <div
+        ref={containerRef}
         style={{
           position: "relative",
           width: "100%",
           height: "100%",
           overflow: "hidden",
+          background: "#f5f5f0",
+          cursor:
+            interaction.type === "panning"
+              ? "grabbing"
+              : mode === "pan"
+                ? "grab"
+                : "crosshair",
+          touchAction: "none",
+          userSelect: "none",
         }}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onContextMenu={onContextMenu}
+        onTouchStart={onTouchStartWithLongPress}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onWheel={onWheel}
       >
         {/* Zoom buttons */}
         <div
@@ -1226,7 +1222,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             position: "absolute",
             top: 12,
             right: 12,
-            zIndex: 20,
+            zIndex: 30,
             display: "flex",
             flexDirection: "column",
             gap: 4,
@@ -1259,361 +1255,342 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
         {/* Transformed canvas */}
         <div
-          ref={containerRef}
-          onMouseDown={onMouseDown}
-          onMouseMove={onMouseMove}
-          onMouseUp={onMouseUp}
-          onContextMenu={onContextMenu}
-          onTouchStart={onTouchStartWithLongPress}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-          onWheel={onWheel}
           style={{
-            width: "100%",
-            height: "100%",
-            cursor:
-              mode === "draw"
-                ? "crosshair"
-                : isDraggingPlant
-                  ? "grabbing"
-                  : "grab",
-            touchAction: "none",
-            userSelect: "none",
+            position: "absolute",
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: "0 0",
+            width: COLS * CELL,
+            height: ROWS * CELL,
           }}
         >
-          <div
+          {/* Grid lines */}
+          <svg
             style={{
               position: "absolute",
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: "0 0",
+              inset: 0,
               width: COLS * CELL,
               height: ROWS * CELL,
+              pointerEvents: "none",
             }}
           >
-            {/* Grid lines */}
-            <svg
-              style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-              width={COLS * CELL}
-              height={ROWS * CELL}
+            {Array.from({ length: COLS + 1 }).map((_, i) => (
+              <line
+                key={`v${i}`}
+                x1={i * CELL}
+                y1={0}
+                x2={i * CELL}
+                y2={ROWS * CELL}
+                stroke="#d6d3d1"
+                strokeWidth={0.5}
+              />
+            ))}
+            {Array.from({ length: ROWS + 1 }).map((_, i) => (
+              <line
+                key={`h${i}`}
+                x1={0}
+                y1={i * CELL}
+                x2={COLS * CELL}
+                y2={i * CELL}
+                stroke="#d6d3d1"
+                strokeWidth={0.5}
+              />
+            ))}
+          </svg>
+
+          {/* Gredice */}
+          {beds.map((bed) => (
+            <div
+              key={bed.id}
+              onClick={() => {
+                if (mode === "pan") {
+                  selectBed(bed.id);
+                  onBedSelect(bed);
+                }
+              }}
+              style={{
+                position: "absolute",
+                left: bed.x * CELL,
+                top: bed.y * CELL,
+                width: bed.width * CELL,
+                height: bed.height * CELL,
+                border: `2px solid ${
+                  resizeCollision &&
+                  interaction.type === "resizing" &&
+                  interaction.bedId === bed.id
+                    ? "#dc2626"
+                    : selectedBedId === bed.id
+                      ? "#15803d"
+                      : "#86efac"
+                }`,
+                backgroundColor:
+                  resizeCollision &&
+                  interaction.type === "resizing" &&
+                  interaction.bedId === bed.id
+                    ? bed.color.replace(")", ", 0.5)").replace("rgb", "rgba")
+                    : bed.color,
+                borderRadius: 6,
+                boxSizing: "border-box",
+              }}
             >
-              {Array.from({ length: COLS + 1 }).map((_, i) => (
-                <line
-                  key={`v${i}`}
-                  x1={i * CELL}
-                  y1={0}
-                  x2={i * CELL}
-                  y2={ROWS * CELL}
-                  stroke="#e7e5e4"
-                  strokeWidth={1}
-                />
-              ))}
-              {Array.from({ length: ROWS + 1 }).map((_, i) => (
-                <line
-                  key={`h${i}`}
-                  x1={0}
-                  y1={i * CELL}
-                  x2={COLS * CELL}
-                  y2={i * CELL}
-                  stroke="#e7e5e4"
-                  strokeWidth={1}
-                />
-              ))}
-            </svg>
-
-            {/* Gredice */}
-            {beds.map((bed) => (
-              <div
-                key={bed.id}
-                onClick={() => {
-                  if (mode === "pan") {
-                    selectBed(bed.id);
-                    onBedSelect(bed);
-                  }
-                }}
-                style={{
-                  position: "absolute",
-                  left: bed.x * CELL,
-                  top: bed.y * CELL,
-                  width: bed.width * CELL,
-                  height: bed.height * CELL,
-                  border: `2px solid ${
-                    resizeCollision &&
-                    interaction.type === "resizing" &&
-                    interaction.bedId === bed.id
-                      ? "#dc2626"
-                      : selectedBedId === bed.id
-                        ? "#15803d"
-                        : "#86efac"
-                  }`,
-                  backgroundColor:
-                    resizeCollision &&
-                    interaction.type === "resizing" &&
-                    interaction.bedId === bed.id
-                      ? bed.color.replace(")", ", 0.5)").replace("rgb", "rgba")
-                      : bed.color,
-                  borderRadius: 6,
-                  boxSizing: "border-box",
-                }}
-              >
-                {/* Delete button */}
-                {mode === "draw" && (
-                  <button
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onTouchStart={(e) => e.stopPropagation()}
-                    onClick={async () => {
-                      const { error } = await supabase
-                        .from("beds")
-                        .delete()
-                        .eq("id", bed.id);
-                      if (error) {
-                        console.error("Delete error:", error);
-                        return;
-                      }
-                      removeBed(bed.id);
-                      selectBed(null);
-                    }}
-                    style={{
-                      position: "absolute",
-                      top: -8,
-                      right: -8,
-                      width: 20,
-                      height: 20,
-                      backgroundColor: "#dc2626",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "50%",
-                      fontSize: 12,
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      zIndex: 20,
-                      lineHeight: 1,
-                    }}
-                  >
-                    ✕
-                  </button>
-                )}
-
-                {/* Resize handles */}
-                {mode === "draw" && (
-                  <>
-                    {(["nw", "ne", "sw", "se"] as ResizeHandle[]).map((h) => (
-                      <div
-                        key={h}
-                        style={{
-                          position: "absolute",
-                          width: 10,
-                          height: 10,
-                          backgroundColor: "white",
-                          border: "2px solid #15803d",
-                          borderRadius: 2,
-                          ...(h.includes("n") ? { top: -5 } : { bottom: -5 }),
-                          ...(h.includes("w") ? { left: -5 } : { right: -5 }),
-                          cursor: `${h}-resize`,
-                          zIndex: 10,
-                        }}
-                      />
-                    ))}
-                  </>
-                )}
-
-                {/* Pod-mreža */}
-                {mode === "draw" && (
-                  <svg
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      pointerEvents: "none",
-                    }}
-                    width={bed.width * CELL}
-                    height={bed.height * CELL}
-                  >
-                    {Array.from({ length: bed.width * 2 - 1 }).map((_, i) => (
-                      <line
-                        key={`sv${i}`}
-                        x1={(i + 1) * SUBCELL}
-                        y1={0}
-                        x2={(i + 1) * SUBCELL}
-                        y2={bed.height * CELL}
-                        stroke="rgba(0,0,0,0.1)"
-                        strokeWidth={0.5}
-                        strokeDasharray="3,3"
-                      />
-                    ))}
-                    {Array.from({ length: bed.height * 2 - 1 }).map((_, i) => (
-                      <line
-                        key={`sh${i}`}
-                        x1={0}
-                        y1={(i + 1) * SUBCELL}
-                        x2={bed.width * CELL}
-                        y2={(i + 1) * SUBCELL}
-                        stroke="rgba(0,0,0,0.1)"
-                        strokeWidth={0.5}
-                        strokeDasharray="3,3"
-                      />
-                    ))}
-                  </svg>
-                )}
-
-                <span
+              {/* Delete button */}
+              {mode === "draw" && (
+                <button
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onClick={async () => {
+                    const { error } = await supabase
+                      .from("beds")
+                      .delete()
+                      .eq("id", bed.id);
+                    if (error) {
+                      console.error("Delete error:", error);
+                      return;
+                    }
+                    removeBed(bed.id);
+                    selectBed(null);
+                  }}
                   style={{
                     position: "absolute",
-                    bottom: 2,
-                    left: 4,
-                    fontSize: 10,
-                    color: "rgba(0,0,0,0.4)",
-                    pointerEvents: "none",
-                    userSelect: "none",
+                    top: -8,
+                    right: -8,
+                    width: 20,
+                    height: 20,
+                    backgroundColor: "#dc2626",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "50%",
+                    fontSize: 12,
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 20,
+                    lineHeight: 1,
                   }}
                 >
-                  {bed.name}
-                </span>
+                  ✕
+                </button>
+              )}
 
-                {/* Posajene rastline */}
-                {bedPlants
-                  .filter((bp) => bp.bed_id === bed.id)
-                  .map((bp) => {
-                    const spacing = bp.plant?.cells_spacing ?? 1;
-                    const size = spacing * SUBCELL;
-                    const isBeingDragged =
-                      isDraggingPlant &&
-                      interaction.type === "movingPlant" &&
-                      interaction.bedPlantId === bp.id;
-                    const override = localPlantOverrides[bp.id];
-                    const displayX =
-                      isBeingDragged && draggingPlantPos
-                        ? draggingPlantPos.cellX
-                        : override
-                          ? override.cellX
-                          : bp.cell_x;
-                    const displayY =
-                      isBeingDragged && draggingPlantPos
-                        ? draggingPlantPos.cellY
-                        : override
-                          ? override.cellY
-                          : bp.cell_y;
+              {/* Resize handles */}
+              {mode === "draw" && (
+                <>
+                  {(["nw", "ne", "sw", "se"] as ResizeHandle[]).map((h) => (
+                    <div
+                      key={h}
+                      style={{
+                        position: "absolute",
+                        width: 10,
+                        height: 10,
+                        backgroundColor: "white",
+                        border: "2px solid #15803d",
+                        borderRadius: 2,
+                        ...(h.includes("n") ? { top: -5 } : { bottom: -5 }),
+                        ...(h.includes("w") ? { left: -5 } : { right: -5 }),
+                        cursor: `${h}-resize`,
+                        zIndex: 10,
+                      }}
+                    />
+                  ))}
+                </>
+              )}
 
-                    return (
-                      <div
-                        key={bp.id}
-                        style={{ position: "absolute", pointerEvents: "none" }}
-                      >
-                        {/* Zasedeno območje */}
-                        <div
-                          style={{
-                            position: "absolute",
-                            left: displayX * SUBCELL,
-                            top: displayY * SUBCELL,
-                            width: size,
-                            height: size,
-                            backgroundColor: isBeingDragged
-                              ? isBadDrop
-                                ? "rgba(239,68,68,0.25)"
-                                : "rgba(134,239,172,0.4)"
-                              : "rgba(134,239,172,0.15)",
-                            border: isBeingDragged
-                              ? isSpaceCollision
-                                ? "1.5px dashed #dc2626" // rdeča — prostor zaseden
-                                : isAroundCollision
-                                  ? "1.5px dashed #eab308" // rumena — preblizu
-                                  : isBadDrop
-                                    ? "1.5px dashed #eab308" // rumena — slab sosed
-                                    : "1.5px dashed #16a34a" // zelena — ok
-                              : "1px dashed rgba(22,163,74,0.3)",
-                            borderRadius: 4,
-                            transition: isBeingDragged
-                              ? "none"
-                              : "left 0.1s, top 0.1s",
-                            pointerEvents: "none",
-                          }}
-                        />
-                        {/* Ikona rastline */}
-                        <div
-                          onMouseDown={(e) => {
-                            if (e.button !== 0 || mode !== "pan") return;
-                            e.stopPropagation();
-                            longPressTimer.current = setTimeout(() => {
-                              startPlantDrag(bp, e.clientX, e.clientY);
-                            }, LONG_PRESS_MS);
-                          }}
-                          onMouseUp={(e) => {
-                            if (interaction.type !== "movingPlant") {
-                              clearLongPress();
-                              e.stopPropagation();
-                            }
-                          }}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openContextMenu(e.clientX, e.clientY, {
-                              plantId: bp.id,
-                            });
-                          }}
-                          onTouchStart={(e) => {
-                            e.stopPropagation();
-                            if (mode !== "pan") return;
-                            const touch = e.touches[0];
-                            longPressTimer.current = setTimeout(() => {
-                              startPlantDrag(bp, touch.clientX, touch.clientY);
-                            }, LONG_PRESS_MS);
-                          }}
-                          onTouchEnd={(e) => {
-                            if (interaction.type !== "movingPlant") {
-                              clearLongPress();
-                              e.stopPropagation();
-                            }
-                          }}
-                          style={{
-                            position: "absolute",
-                            left: displayX * SUBCELL,
-                            top: displayY * SUBCELL,
-                            width: SUBCELL,
-                            height: SUBCELL,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: 14,
-                            pointerEvents: "auto",
-                            zIndex: isBeingDragged ? 11 : 5,
-                            cursor: isBeingDragged ? "grabbing" : "grab",
-                            filter: isBeingDragged
-                              ? isBadDrop
-                                ? "drop-shadow(0 2px 8px rgba(220,38,38,0.5))"
-                                : "drop-shadow(0 2px 6px rgba(0,0,0,0.25))"
-                              : "none",
-                            transition: isBeingDragged
-                              ? "none"
-                              : "left 0.1s, top 0.1s",
-                            opacity: isBeingDragged ? 0.9 : 1,
-                          }}
-                        >
-                          {bp.plant?.img}
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            ))}
+              {/* Pod-mreža */}
+              {mode === "draw" && (
+                <svg
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: bed.width * CELL,
+                    height: bed.height * CELL,
+                    pointerEvents: "none",
+                  }}
+                >
+                  {Array.from({ length: bed.width * 2 - 1 }).map((_, i) => (
+                    <line
+                      key={`sv${i}`}
+                      x1={(i + 1) * SUBCELL}
+                      y1={0}
+                      x2={(i + 1) * SUBCELL}
+                      y2={bed.height * CELL}
+                      stroke="#a8a29e"
+                      strokeWidth={0.5}
+                      strokeDasharray="2,2"
+                    />
+                  ))}
+                  {Array.from({ length: bed.height * 2 - 1 }).map((_, i) => (
+                    <line
+                      key={`sh${i}`}
+                      x1={0}
+                      y1={(i + 1) * SUBCELL}
+                      x2={bed.width * CELL}
+                      y2={(i + 1) * SUBCELL}
+                      stroke="#a8a29e"
+                      strokeWidth={0.5}
+                      strokeDasharray="2,2"
+                    />
+                  ))}
+                </svg>
+              )}
 
-            {/* Draft gredica */}
-            {draftNorm && (
-              <div
+              <span
                 style={{
                   position: "absolute",
-                  left: draftNorm.x * CELL,
-                  top: draftNorm.y * CELL,
-                  width: draftNorm.width * CELL,
-                  height: draftNorm.height * CELL,
-                  border: "2px dashed #15803d",
-                  backgroundColor: "rgba(134,239,172,0.2)",
-                  borderRadius: 6,
+                  bottom: 2,
+                  left: 4,
+                  fontSize: 10,
+                  color: "#78716c",
                   pointerEvents: "none",
+                  userSelect: "none",
                 }}
-              />
-            )}
-          </div>
+              >
+                {bed.name}
+              </span>
+
+              {/* Posajene rastline */}
+              {bedPlants
+                .filter((bp) => bp.bed_id === bed.id)
+                .map((bp) => {
+                  const spacing = bp.plant?.cells_spacing ?? 1;
+                  const size = spacing * SUBCELL;
+                  const isBeingDragged =
+                    isDraggingPlant &&
+                    interaction.type === "movingPlant" &&
+                    interaction.bedPlantId === bp.id;
+                  const override = localPlantOverrides[bp.id];
+                  const displayX =
+                    isBeingDragged && draggingPlantPos
+                      ? draggingPlantPos.cellX
+                      : override
+                        ? override.cellX
+                        : bp.cell_x;
+                  const displayY =
+                    isBeingDragged && draggingPlantPos
+                      ? draggingPlantPos.cellY
+                      : override
+                        ? override.cellY
+                        : bp.cell_y;
+
+                  return (
+                    <div
+                      key={bp.id}
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        pointerEvents: "none",
+                      }}
+                    >
+                      {/* Zasedeno območje */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: displayX * SUBCELL,
+                          top: displayY * SUBCELL,
+                          width: size,
+                          height: size,
+                          backgroundColor: isBeingDragged
+                            ? isSpaceCollision
+                              ? "rgba(220,38,38,0.15)"
+                              : isAroundCollision
+                                ? "rgba(251,191,36,0.15)"
+                                : "rgba(34,197,94,0.15)"
+                            : "rgba(34,197,94,0.08)",
+                          border: isBeingDragged
+                            ? isSpaceCollision
+                              ? "1px solid rgba(220,38,38,0.4)"
+                              : isAroundCollision
+                                ? "1px solid rgba(251,191,36,0.4)"
+                                : "1px solid rgba(34,197,94,0.3)"
+                            : "1px solid rgba(34,197,94,0.2)",
+                          borderRadius: 3,
+                          pointerEvents: "none",
+                        }}
+                      />
+                      {/* Ikona rastline */}
+                      <div
+                        onMouseDown={(e) => {
+                          if (e.button !== 0 || mode !== "pan") return;
+                          e.stopPropagation();
+                          longPressTimer.current = setTimeout(() => {
+                            startPlantDrag(bp, e.clientX, e.clientY);
+                          }, LONG_PRESS_MS);
+                        }}
+                        onMouseUp={(e) => {
+                          if (interaction.type !== "movingPlant") {
+                            clearLongPress();
+                            e.stopPropagation();
+                          }
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          openContextMenu(e.clientX, e.clientY, {
+                            plantId: bp.id,
+                          });
+                        }}
+                        onTouchStart={(e) => {
+                          e.stopPropagation();
+                          if (mode !== "pan") return;
+                          const touch = e.touches[0];
+                          longPressTimer.current = setTimeout(() => {
+                            startPlantDrag(bp, touch.clientX, touch.clientY);
+                          }, LONG_PRESS_MS);
+                        }}
+                        onTouchEnd={(e) => {
+                          if (interaction.type !== "movingPlant") {
+                            clearLongPress();
+                            e.stopPropagation();
+                          }
+                        }}
+                        style={{
+                          position: "absolute",
+                          left: displayX * SUBCELL,
+                          top: displayY * SUBCELL,
+                          width: SUBCELL,
+                          height: SUBCELL,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 14,
+                          pointerEvents: "auto",
+                          zIndex: isBeingDragged ? 11 : 5,
+                          cursor: isBeingDragged ? "grabbing" : "grab",
+                          filter: isBeingDragged
+                            ? isBadDrop
+                              ? "drop-shadow(0 2px 8px rgba(220,38,38,0.5))"
+                              : "drop-shadow(0 2px 6px rgba(0,0,0,0.25))"
+                            : "none",
+                          transition: isBeingDragged
+                            ? "none"
+                            : "left 0.1s, top 0.1s",
+                          opacity: isBeingDragged ? 0.9 : 1,
+                        }}
+                      >
+                        {bp.plant?.img}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          ))}
+
+          {/* Draft gredica */}
+          {draftNorm && (
+            <div
+              style={{
+                position: "absolute",
+                left: draftNorm.x * CELL,
+                top: draftNorm.y * CELL,
+                width: draftNorm.width * CELL,
+                height: draftNorm.height * CELL,
+                border: "2px dashed #15803d",
+                backgroundColor: "rgba(21,128,61,0.1)",
+                borderRadius: 6,
+                pointerEvents: "none",
+              }}
+            />
+          )}
         </div>
 
         {/* Context menu */}
@@ -1699,78 +1676,79 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
               position: "fixed",
               left: dragTooltip.x,
               top: dragTooltip.y,
-              transform: "translate(-50%, -100%)",
+              transform: "translateX(-50%) translateY(-100%)",
               zIndex: 100,
+              backgroundColor: "white",
+              borderRadius: 8,
+              boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+              border: "1px solid #e7e5e4",
+              padding: "6px 10px",
+              fontSize: 11,
               pointerEvents: "none",
+              minWidth: 120,
+              maxWidth: 220,
             }}
           >
             <div
               style={{
-                backgroundColor: "white",
-                border: `1.5px solid ${isSpaceCollision ? "#dc2626" : "#eab308"}`,
-                borderRadius: 10,
-                padding: "8px 12px",
-                boxShadow: "0 4px 16px rgba(220,38,38,0.15)",
-                minWidth: 160,
-                maxWidth: 240,
+                fontWeight: 600,
+                color: "#292524",
+                marginBottom: dragTooltip.badNeighborNames.length > 0 ? 6 : 0,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
               }}
             >
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "#dc2626",
-                  marginBottom: dragTooltip.badNeighborNames.length > 0 ? 6 : 0,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                }}
-              >
-                {dragTooltip.badNeighborNames.length > 0
-                  ? "⚠️ Slabi sosedje v gredici"
-                  : dragTooltip.currentBadNames.map((name, i) => (
-                      <div key={i}>{name}</div>
-                    ))}
-              </div>
-              {dragTooltip.badNeighborNames.map((name) => {
-                const isCurrent = dragTooltip.currentBadNames.includes(name);
-                return (
-                  <div
-                    key={name}
-                    style={{
-                      fontSize: 13,
-                      color: isCurrent ? "#dc2626" : "#78716c",
-                      fontWeight: isCurrent ? 700 : 400,
-                      padding: "2px 0",
-                    }}
-                  >
-                    {isCurrent ? "🚫 " : "⚠️ "}
-                    {name}
-                  </div>
-                );
-              })}
-              {dragTooltip.badNeighborNames.length > 0 && (
+              {dragTooltip.badNeighborNames.length > 0
+                ? "⚠️ Slabi sosedje v gredici"
+                : dragTooltip.currentBadNames.map((name, i) => (
+                    <div key={i}>{name}</div>
+                  ))}
+            </div>
+            {dragTooltip.badNeighborNames.map((name) => {
+              const isCurrent = dragTooltip.currentBadNames.includes(name);
+              return (
                 <div
+                  key={name}
                   style={{
-                    fontSize: 10,
-                    color: "#a8a29e",
-                    marginTop: 6,
-                    borderTop: "1px solid #f5f5f4",
-                    paddingTop: 5,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "2px 0",
+                    fontWeight: isCurrent ? 700 : 400,
+                    color: isCurrent ? "#dc2626" : "#78716c",
                   }}
                 >
-                  Boldano = trenutno preblizu
+                  {isCurrent ? "🚫 " : "⚠️ "}
+                  {name}
                 </div>
-              )}
-            </div>
+              );
+            })}
+            {dragTooltip.badNeighborNames.length > 0 && (
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 10,
+                  color: "#a8a29e",
+                  borderTop: "1px solid #f5f5f4",
+                  paddingTop: 4,
+                }}
+              >
+                Boldano = trenutno preblizu
+              </div>
+            )}
+
             {/* Puščica navzdol */}
             <div
               style={{
+                position: "absolute",
+                bottom: -6,
+                left: "50%",
+                transform: "translateX(-50%)",
                 width: 0,
                 height: 0,
                 borderLeft: "6px solid transparent",
                 borderRight: "6px solid transparent",
-                borderTop: "6px solid #dc2626",
-                margin: "0 auto",
+                borderTop: "6px solid white",
               }}
             />
           </div>
@@ -1798,13 +1776,13 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           >
             <button
               onClick={cancelDraft}
-              className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-lg"
+              className="px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-100 rounded-lg"
             >
               ✗ Prekliči
             </button>
             <button
               onClick={confirmDraft}
-              className="px-4 py-2 text-sm bg-green-600 text-white hover:bg-green-700 rounded-lg"
+              className="px-3 py-1.5 text-sm bg-green-700 text-white hover:bg-green-800 rounded-lg"
             >
               ✓ Potrdi gredico
             </button>
