@@ -330,7 +330,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       [beds],
     );
 
-    // Vrne info o slabih sosedjh — uporablja REFS za svež bedPlants/plantNeighbors
+    // Vrne info o slabih sosedih — uporablja REFS za svež bedPlants/plantNeighbors
     const getBadNeighborInfo = useCallback(
       (
         draggingBpId: string,
@@ -401,6 +401,52 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         };
       },
       [], // Namerno prazno — vedno bere iz refs
+    );
+
+    // Vrne info o sosedih ki so preblizu
+    const getAroundCollisionInfo = useCallback(
+      (
+        draggingBpId: string,
+        bedId: string,
+        cellX: number,
+        cellY: number,
+      ): string[] => {
+        const currentBedPlants = bedPlantsRef.current;
+        const draggingBp = currentBedPlants.find(
+          (bp) => bp.id === draggingBpId,
+        );
+        if (!draggingBp?.plant) return [];
+
+        const names: string[] = [];
+
+        for (const bp of currentBedPlants) {
+          if (bp.bed_id !== bedId || bp.id === draggingBpId) continue;
+          if (!bp.plant) continue;
+
+          const neighborSize = bp.plant.cells_spacing ?? 1;
+          const neighborAround = bp.plant.around_cells_spacing ?? 0;
+
+          const inAroundZone =
+            cellX >= bp.cell_x - neighborAround &&
+            cellX < bp.cell_x + neighborSize + neighborAround &&
+            cellY >= bp.cell_y - neighborAround &&
+            cellY < bp.cell_y + neighborSize + neighborAround;
+
+          const inSpaceZone =
+            cellX >= bp.cell_x &&
+            cellX < bp.cell_x + neighborSize &&
+            cellY >= bp.cell_y &&
+            cellY < bp.cell_y + neighborSize;
+
+          if (inAroundZone && !inSpaceZone) {
+            const label = `${bp.plant.img ?? ""} ${bp.plant.name}`;
+            if (!names.includes(label)) names.push(label);
+          }
+        }
+
+        return names;
+      },
+      [],
     );
 
     // Preveri če se rastlina prostorsko prekriva z obstoječo — uporablja REFS
@@ -509,23 +555,23 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           newCellX,
           newCellY,
         );
+
         const hasSpaceCollision = checkSpaceCollision(
           state.bedPlantId,
           state.bedId,
           newCellX,
           newCellY,
         );
-        setIsSpaceCollision(hasSpaceCollision);
-        setIsBadDrop(isBad || hasSpaceCollision);
 
-        const hasAroundCollision =
-          !hasSpaceCollision &&
-          checkAroundSpacingCollision(
-            state.bedPlantId,
-            state.bedId,
-            newCellX,
-            newCellY,
-          );
+        const aroundNames = !hasSpaceCollision
+          ? getAroundCollisionInfo(
+              state.bedPlantId,
+              state.bedId,
+              newCellX,
+              newCellY,
+            )
+          : [];
+        const hasAroundCollision = aroundNames.length > 0;
 
         setIsSpaceCollision(hasSpaceCollision);
         setIsAroundCollision(hasAroundCollision);
@@ -548,7 +594,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             x: tooltipX,
             y: tooltipY,
             badNeighborNames: [],
-            currentBadNames: ["⚠️ Preblizu drugi rastlini"],
+            currentBadNames: aroundNames.map((n) => `⚠️ Preblizu: ${n}`),
           });
         } else if (isBad && badNeighborNames.length > 0) {
           setDragTooltip({
@@ -561,12 +607,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           setDragTooltip(null);
         }
       },
-      [
-        beds,
-        getBadNeighborInfo,
-        checkSpaceCollision,
-        checkAroundSpacingCollision,
-      ],
+      [beds, getBadNeighborInfo, checkSpaceCollision, getAroundCollisionInfo],
     );
 
     const commitPlantDrop = useCallback(
@@ -1680,7 +1721,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
               >
                 {dragTooltip.badNeighborNames.length > 0
                   ? "⚠️ Slabi sosedje v gredici"
-                  : dragTooltip.currentBadNames[0]}
+                  : dragTooltip.currentBadNames.map((name, i) => (
+                      <div key={i}>{name}</div>
+                    ))}
               </div>
               {dragTooltip.badNeighborNames.map((name) => {
                 const isCurrent = dragTooltip.currentBadNames.includes(name);
