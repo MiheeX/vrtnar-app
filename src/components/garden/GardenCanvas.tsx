@@ -1656,7 +1656,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             <div
               style={{
                 backgroundColor: "white",
-                border: "1.5px solid #dc2626",
+                border: `1.5px solid ${isSpaceCollision ? "#dc2626" : "#eab308"}`,
                 borderRadius: 10,
                 padding: "8px 12px",
                 boxShadow: "0 4px 16px rgba(220,38,38,0.15)",
