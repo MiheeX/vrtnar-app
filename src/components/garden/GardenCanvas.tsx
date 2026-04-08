@@ -756,6 +756,11 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     // Wrapper za onTouchStart ki doda long press za context menu
     const onTouchStartWithLongPress = useCallback(
       (e: React.TouchEvent) => {
+        // Zapri context menu ob kateremkoli novem touchu (razen klika na sam menu)
+        if (contextMenu) {
+          setContextMenu(null);
+        }
+
         if (e.touches.length === 1 && mode === "pan") {
           const touch = e.touches[0];
           longPressTimer.current = setTimeout(() => {
@@ -764,7 +769,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         }
         onTouchStart(e);
       },
-      [mode, openContextMenu, onTouchStart],
+      [mode, openContextMenu, onTouchStart, contextMenu],
     );
 
     // Obravnava premik prsta — pinch zoom, panning, risanje, premik gredice/rastline
@@ -961,10 +966,16 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     // Začne mouse interakcijo — panning, risanje gredice ali resize
     const onMouseDown = useCallback(
       (e: React.MouseEvent) => {
+        if (e.button === 2) return;
+
+        // Zapri context menu ob kateremkoli kliku in ne nadaljuj z interakcijo
         if (contextMenu) {
           setContextMenu(null);
-          return;
+          //return;
         }
+        // Desni klik — ne dela ničesar (onContextMenu prevzame)
+        if (e.button === 2) return;
+
         if (draft) {
           setInteraction({
             type: "panning",
@@ -1525,6 +1536,10 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                         onMouseDown={(e) => {
                           if (e.button !== 0 || mode !== "pan") return;
                           e.stopPropagation();
+                          if (contextMenu) {
+                            setContextMenu(null);
+                            //return;
+                          }
                           longPressTimer.current = setTimeout(() => {
                             startPlantDrag(bp);
                           }, LONG_PRESS_MS);
@@ -1545,6 +1560,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                         onTouchStart={(e) => {
                           e.stopPropagation();
                           if (mode !== "pan") return;
+                          if (contextMenu) setContextMenu(null);
                           clearLongPress();
                           longPressTimer.current = setTimeout(() => {
                             startPlantDrag(bp);
