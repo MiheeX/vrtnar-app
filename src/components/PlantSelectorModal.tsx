@@ -43,10 +43,6 @@ export function PlantSelectorModal({
   );
 
   useEffect(() => {
-    if (open) setQuantities({});
-  }, [open]);
-
-  useEffect(() => {
     if (open) {
       setQuantities({});
       setSearchQuery("");
@@ -115,50 +111,53 @@ export function PlantSelectorModal({
                 📐 {plant.cells_spacing} cel · 🔲 {plant.around_cells_spacing}{" "}
                 odmik
               </p>
+              {inInventory && (
+                <p className="text-xs text-green-600 font-medium mt-0.5">
+                  ✓ {entry!.quantity} v zalogah
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
-              {inInventory && (
-                <span className="text-green-600 text-xs font-medium whitespace-nowrap">
-                  ✓ {entry!.quantity} v zalogah
+              {/* Quantity stepper — vedno prikazan */}
+              {/* Quantity stepper */}
+              <div className="flex items-center gap-1 border border-stone-300 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => adjustQty(plant.id, -1)}
+                  className="px-2 py-1 text-stone-500 hover:bg-stone-100"
+                >
+                  <Minus size={13} />
+                </button>
+                <span className="px-2 text-sm font-medium min-w-[1.5rem] text-center">
+                  {getQty(plant.id)}
                 </span>
-              )}
-
-              {!inInventory && (
-                <div className="flex items-center gap-1 border border-stone-300 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => adjustQty(plant.id, -1)}
-                    className="px-2 py-1 text-stone-500 hover:bg-stone-100"
-                  >
-                    <Minus size={13} />
-                  </button>
-                  <span className="px-2 text-sm font-medium">
-                    {getQty(plant.id)}
-                  </span>
-                  <button
-                    onClick={() => adjustQty(plant.id, 1)}
-                    className="px-2 py-1 text-stone-500 hover:bg-stone-100"
-                  >
-                    <Plus size={13} />
-                  </button>
-                </div>
-              )}
-
-              {inInventory ? (
                 <button
-                  onClick={() => onRemove(entry!.id)}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-100 text-red-600 text-sm font-medium hover:bg-red-200 transition-colors"
+                  onClick={() => adjustQty(plant.id, 1)}
+                  className="px-2 py-1 text-stone-500 hover:bg-stone-100"
                 >
-                  <Trash2 size={14} /> Odstrani
+                  <Plus size={13} />
                 </button>
-              ) : (
-                <button
-                  onClick={() => onAdd(plant.id, getQty(plant.id))}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition-colors"
-                >
-                  <Check size={14} /> Dodaj
-                </button>
-              )}
+              </div>
+
+              {/* Dodaj — vedno prikazan */}
+              <button
+                onClick={() => onAdd(plant.id, getQty(plant.id))}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition-colors"
+              >
+                <Plus size={14} /> Dodaj
+              </button>
+
+              {/* Odstrani — samo če je v inventarju */}
+              <div className="w-8 h-8 flex items-center justify-center">
+                {inInventory && (
+                  <button
+                    onClick={() => onRemove(entry!.id)}
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         );
