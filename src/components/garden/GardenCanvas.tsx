@@ -560,12 +560,16 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           rect.top + p.y + (bed.y * CELL + newCellY * SUBCELL) * z - 12;
 
         if (hasSpaceCollision) {
+          //ne kaži tooltip, samo ne dovoli plantanja
+          setDragTooltip(null);
+          /*
           setDragTooltip({
             x: tooltipX,
             y: tooltipY,
             badNeighborNames: [],
             currentBadNames: ["🚫 Ni prostora — celica je zasedena"],
           });
+          */
         } else if (hasAroundCollision) {
           setDragTooltip({
             x: tooltipX,
