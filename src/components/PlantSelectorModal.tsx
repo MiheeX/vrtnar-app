@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Plus, Minus, Check, Trash2 } from "lucide-react";
+import { X, Plus, Minus, Trash2 } from "lucide-react";
 import { usePlants } from "../hooks/usePlants";
 import type { UserInventoryPlant } from "../types/index";
 
