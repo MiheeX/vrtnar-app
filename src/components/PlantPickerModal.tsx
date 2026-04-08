@@ -75,6 +75,18 @@ export function PlantPickerModal({
     new Set(),
   );
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Filtrirani inventory
+  const filteredInventory = inventory.filter((item) =>
+    `${item.plant?.name ?? ""} ${item.plant?.latin_name ?? ""}`
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase()),
+  );
+
+  useEffect(() => {
+    if (!open) setSearchQuery("");
+  }, [open]);
 
   useEffect(() => {
     if (!open || !bedId) return;
@@ -220,10 +232,11 @@ export function PlantPickerModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center h-full">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white rounded-t-2xl shadow-xl z-10 max-h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200">
+      <div className="relative w-full max-w-lg bg-white rounded-t-2xl shadow-xl z-10 max-h-[80vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-stone-200">
           <div>
             <h2 className="font-semibold text-stone-800 text-lg">
               🌱 Posadi rastlino
@@ -240,19 +253,51 @@ export function PlantPickerModal({
           </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 px-4 py-3 flex flex-col gap-3">
+        {/* Search — sticky, izven scroll območja */}
+        <div className="flex-shrink-0 px-4 pt-3 pb-2 border-b border-stone-100">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Išči rastline..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 text-sm border border-stone-200 rounded-lg bg-stone-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
+            />
+            <svg
+              className="absolute left-2.5 top-2.5 w-4 h-4 text-stone-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
+        </div>
+
+        {/* Scrollable lista */}
+        <div className="overflow-y-auto flex-1 min-h-0 px-4 py-3 flex flex-col gap-3">
           {loading && (
             <p className="text-stone-400 text-sm text-center py-8">
               Nalagam...
             </p>
           )}
-          {!loading && inventory.length === 0 && (
+          {!loading && filteredInventory.length === 0 && searchQuery && (
+            <p className="text-sm text-stone-400 text-center py-4">
+              Ni zadetkov za "{searchQuery}"
+            </p>
+          )}
+          {!loading && inventory.length === 0 && !searchQuery && (
             <p className="text-stone-400 text-sm text-center py-8">
               Nimaš rastlin v inventarju.
             </p>
           )}
           {!loading &&
-            inventory.map((item) => {
+            filteredInventory.map((item) => {
               const plant = item.plant;
               if (!plant || item.quantity <= 0) return null;
 

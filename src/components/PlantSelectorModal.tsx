@@ -22,6 +22,7 @@ export function PlantSelectorModal({
 }: Props) {
   const { plants, loading } = usePlants();
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [searchQuery, setSearchQuery] = useState("");
 
   const getInventoryEntry = (plantId: string) =>
     inventory.find((i) => i.plant_id === plantId);
@@ -35,19 +36,63 @@ export function PlantSelectorModal({
     }));
   };
 
+  const filteredPlants = plants.filter((plant) =>
+    `${plant.name} ${plant.latin_name ?? ""}`
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase()),
+  );
+
   useEffect(() => {
     if (open) setQuantities({});
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setQuantities({});
+      setSearchQuery("");
+    }
   }, [open]);
 
   // Standalone mode — ne prikaži če ni odprt
   if (!embedded && !open) return null;
 
   const list = (
-    <div className="overflow-y-auto flex-1 px-4 py-3 flex flex-col gap-3">
+    <div className="flex flex-col gap-2 p-3">
+      {/* Search bar */}
+      <div className="relative mb-1">
+        <input
+          type="text"
+          placeholder="Išči rastline..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-8 pr-3 py-2 text-sm border border-stone-200 rounded-lg bg-stone-50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
+        />
+        <svg
+          className="absolute left-2.5 top-2.5 w-4 h-4 text-stone-400"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+          />
+        </svg>
+      </div>
+
       {loading && (
-        <p className="text-stone-400 text-sm text-center py-8">Nalagam...</p>
+        <p className="text-sm text-stone-400 text-center py-4">Nalagam...</p>
       )}
-      {plants.map((plant) => {
+
+      {!loading && filteredPlants.length === 0 && (
+        <p className="text-sm text-stone-400 text-center py-4">
+          Ni zadetkov za "{searchQuery}"
+        </p>
+      )}
+
+      {filteredPlants.map((plant) => {
         const entry = getInventoryEntry(plant.id);
         const inInventory = !!entry;
         return (
