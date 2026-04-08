@@ -899,51 +899,62 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     );
 
     // Zaključi touch — shrani gredico ali zaključi drag rastline
-    const onTouchEnd = useCallback(() => {
-      clearLongPress();
-      pendingDrawStart.current = null;
-      if (lastPinchDist.current !== null) {
-        lastPinchDist.current = null;
-        lastPinchMid.current = null;
-        return;
-      }
-      if (interaction.type === "movingPlant") {
-        commitPlantDrop(interaction);
-        return;
-      }
-      if (interaction.type === "moving" || interaction.type === "resizing") {
-        const bed = beds.find((b) => b.id === interaction.bedId);
-        if (bed)
-          syncBedToSupabase(bed.id, {
-            x: bed.x,
-            y: bed.y,
-            width: bed.width,
-            height: bed.height,
-          });
-      }
-      if (interaction.type === "drawing") {
-        if (draft) {
-          const n = normalizeDraft(draft);
-          if (n.width >= MIN_CELLS && n.height >= MIN_CELLS && !hasCollision(n))
-            setInteraction({ type: "idle" });
-          else {
-            setDraft(null);
-            setResizeCollision(false);
-            setInteraction({ type: "idle" });
+    const onTouchEnd = useCallback(
+      (e: React.TouchEvent) => {
+        clearLongPress();
+        pendingDrawStart.current = null;
+        // Pinch reset šele ko sta DVA prsta dvignjena (touches.length === 0)
+        // touchend se sproži tudi pri prvem prstu med pinchom — ne resetiramo prezgodaj
+        if (lastPinchDist.current !== null) {
+          if (e.touches.length === 0) {
+            lastPinchDist.current = null;
+            lastPinchMid.current = null;
           }
+          return;
         }
-      } else {
-        setResizeCollision(false);
-        setInteraction({ type: "idle" });
-      }
-    }, [
-      interaction,
-      draft,
-      beds,
-      syncBedToSupabase,
-      clearLongPress,
-      commitPlantDrop,
-    ]);
+        if (interaction.type === "movingPlant") {
+          commitPlantDrop(interaction);
+          return;
+        }
+        if (interaction.type === "moving" || interaction.type === "resizing") {
+          const bed = beds.find((b) => b.id === interaction.bedId);
+          if (bed)
+            syncBedToSupabase(bed.id, {
+              x: bed.x,
+              y: bed.y,
+              width: bed.width,
+              height: bed.height,
+            });
+        }
+        if (interaction.type === "drawing") {
+          if (draft) {
+            const n = normalizeDraft(draft);
+            if (
+              n.width >= MIN_CELLS &&
+              n.height >= MIN_CELLS &&
+              !hasCollision(n)
+            )
+              setInteraction({ type: "idle" });
+            else {
+              setDraft(null);
+              setResizeCollision(false);
+              setInteraction({ type: "idle" });
+            }
+          }
+        } else {
+          setResizeCollision(false);
+          setInteraction({ type: "idle" });
+        }
+      },
+      [
+        interaction,
+        draft,
+        beds,
+        syncBedToSupabase,
+        clearLongPress,
+        commitPlantDrop,
+      ],
+    );
 
     // ── Mouse ─────────────────────────────────────────────────────────────
 
@@ -1534,6 +1545,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                         onTouchStart={(e) => {
                           e.stopPropagation();
                           if (mode !== "pan") return;
+                          clearLongPress();
                           longPressTimer.current = setTimeout(() => {
                             startPlantDrag(bp);
                           }, LONG_PRESS_MS);
