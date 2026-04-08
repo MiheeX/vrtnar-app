@@ -29,6 +29,7 @@ interface Props {
   onReturnToInventory: (plantId: string) => void;
   plantNeighbors: PlantNeighbor[];
   allowBadNeighborDrop?: boolean;
+  showSubGrid?: boolean;
 }
 
 export interface GardenCanvasHandle {
@@ -98,6 +99,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       onReturnToInventory,
       plantNeighbors,
       allowBadNeighborDrop = false,
+      showSubGrid = false,
     },
     ref,
   ) => {
@@ -1421,7 +1423,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
               )}
 
               {/* Pod-mreža */}
-              {mode === "draw" && (
+              {(mode === "draw" || showSubGrid) && (
                 <svg
                   style={{
                     position: "absolute",

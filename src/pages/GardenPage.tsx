@@ -57,6 +57,8 @@ const GardenPage: React.FC = () => {
 
   const [plantNeighbors, setPlantNeighbors] = useState<PlantNeighbor[]>([]);
 
+  const [showSubGrid, setShowSubGrid] = useState(false);
+
   // TODO: kasneje iz baze/userSettings
   const allowBadNeighborDrop = false;
 
@@ -116,6 +118,7 @@ const GardenPage: React.FC = () => {
       {/* Canvas */}
       <div className="flex-1 overflow-hidden relative">
         <GardenCanvas
+          showSubGrid={showSubGrid}
           ref={canvasRef}
           onBedSelect={handleBedSelect}
           onPlantCell={(bedId, cellX, cellY) => {
@@ -205,6 +208,8 @@ const GardenPage: React.FC = () => {
       */}
 
       <SettingsModal
+        showSubGrid={showSubGrid}
+        onToggleSubGrid={() => setShowSubGrid((s) => !s)}
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         inventory={inventory}

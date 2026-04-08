@@ -11,6 +11,8 @@ interface Props {
   inventory: UserInventoryPlant[];
   onAdd: (plantId: string, quantity: number) => void;
   onRemove: (userPlantId: string) => void;
+  showSubGrid: boolean;
+  onToggleSubGrid: () => void;
 }
 
 export function SettingsModal({
@@ -19,6 +21,8 @@ export function SettingsModal({
   inventory,
   onAdd,
   onRemove,
+  showSubGrid,
+  onToggleSubGrid,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("settings");
 
@@ -71,11 +75,30 @@ export function SettingsModal({
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto">
           {activeTab === "settings" && (
-            <div className="px-4 py-6 flex flex-col gap-4">
-              <p className="text-stone-400 text-sm text-center">
-                Nastavitve bodo kmalu na voljo...
-              </p>
-              {/* Sem dodajaš parametre aplikacije */}
+            <div className="p-4 space-y-4">
+              {/* Podmreža */}
+              <div className="flex items-center justify-between py-3 border-b border-stone-100">
+                <div>
+                  <p className="text-sm font-medium text-stone-700">
+                    Podmreža v gredicah
+                  </p>
+                  <p className="text-xs text-stone-400 mt-0.5">
+                    Prikaži podmrežo v pan/plant načinu
+                  </p>
+                </div>
+                <button
+                  onClick={onToggleSubGrid}
+                  className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
+                    showSubGrid ? "bg-green-500" : "bg-stone-300"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+                      showSubGrid ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
           )}
 
