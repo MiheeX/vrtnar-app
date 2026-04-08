@@ -361,6 +361,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         if (!draggingBp?.plant)
           return { isBad: false, badNeighborNames: [], currentBadNames: [] };
 
+        const draggingSize = draggingBp.plant.cells_spacing ?? 1;
+
         // IDs vseh slabih sosedov za to vrsto rastline
         const allBadNeighborIds = currentNeighbors
           .filter(
@@ -389,15 +391,20 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           ),
         ];
 
-        // Slabe rastline ki so trenutno v dosegu (glede na razdaljo)
+        // Slabe rastline ki so trenutno v dosegu — pravokotno prekrivanje + 1 celica buffer
         const currentBadNames: string[] = [];
         for (const neighbor of allBadInBed) {
           if (!neighbor.plant) continue;
-          const neighborSpacing = neighbor.plant.cells_spacing ?? 1;
-          const dx = Math.abs(neighbor.cell_x - cellX);
-          const dy = Math.abs(neighbor.cell_y - cellY);
-          // Slabi sosed je aktiven samo ko smo znotraj njegovega cells_spacing območja
-          if (dx < neighborSpacing && dy < neighborSpacing) {
+          const neighborSize = neighbor.plant.cells_spacing ?? 1;
+
+          // Zaznamo slabega soseda ko sta si pravokotnika neposredno ob sebi ali prekrivata
+          const inRange =
+            cellX < neighbor.cell_x + neighborSize + 1 &&
+            cellX + draggingSize > neighbor.cell_x - 1 &&
+            cellY < neighbor.cell_y + neighborSize + 1 &&
+            cellY + draggingSize > neighbor.cell_y - 1;
+
+          if (inRange) {
             const label = `${neighbor.plant.img ?? ""} ${neighbor.plant.name}`;
             if (!currentBadNames.includes(label)) currentBadNames.push(label);
           }
@@ -570,6 +577,17 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             currentBadNames: ["🚫 Ni prostora — celica je zasedena"],
           });
           */
+        } else if (hasAroundCollision && isBad && currentBadNames.length > 0) {
+          // Oboje hkrati — preblizu IN slab sosed
+          setDragTooltip({
+            x: tooltipX,
+            y: tooltipY,
+            badNeighborNames,
+            currentBadNames: [
+              ...aroundNames.map((n) => `⚠️ Preblizu: ${n}`),
+              ...currentBadNames,
+            ],
+          });
         } else if (hasAroundCollision) {
           setDragTooltip({
             x: tooltipX,
