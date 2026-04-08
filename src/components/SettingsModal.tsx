@@ -33,10 +33,10 @@ export function SettingsModal({
       {/* Overlay */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      {/* Sheet */}
-      <div className="relative w-full max-w-lg bg-white rounded-t-2xl shadow-xl z-10 max-h-[85vh] flex flex-col">
+      {/* Sheet — fiksna višina */}
+      <div className="relative w-full max-w-lg bg-white rounded-t-2xl shadow-xl z-10 h-[75vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200">
+        <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-stone-200">
           <h2 className="font-semibold text-stone-800 text-lg">
             ⚙️ Nastavitve
           </h2>
@@ -49,7 +49,7 @@ export function SettingsModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-stone-200">
+        <div className="flex-shrink-0 flex border-b border-stone-200">
           <button
             onClick={() => setActiveTab("settings")}
             className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
@@ -72,11 +72,10 @@ export function SettingsModal({
           </button>
         </div>
 
-        {/* Tab content */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Tab content — scrollable */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {activeTab === "settings" && (
             <div className="p-4 space-y-4">
-              {/* Podmreža */}
               <div className="flex items-center justify-between py-3 border-b border-stone-100">
                 <div>
                   <p className="text-sm font-medium text-stone-700">
