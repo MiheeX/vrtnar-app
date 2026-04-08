@@ -246,6 +246,28 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         );
       });
 
+    // Preveri ali katera rastlina v gredici pade izven nove oblike gredice
+    const hasPlantOutsideBed = (
+      bedId: string,
+      newShape: { x: number; y: number; width: number; height: number },
+    ): boolean => {
+      const plantsInBed = bedPlantsRef.current.filter(
+        (bp) => bp.bed_id === bedId,
+      );
+      return plantsInBed.some((bp) => {
+        const spacing = bp.plant?.cells_spacing ?? 1;
+        // bp.cell_x/y so v sub-celicah (SUBCELL), newShape.width/height v celicah
+        const maxSubCellX = newShape.width * 2;
+        const maxSubCellY = newShape.height * 2;
+        return (
+          bp.cell_x < 0 ||
+          bp.cell_y < 0 ||
+          bp.cell_x + spacing > maxSubCellX ||
+          bp.cell_y + spacing > maxSubCellY
+        );
+      });
+    };
+
     // Shrani posodobljene podatke gredice v Supabase
     const syncBedToSupabase = useCallback(
       async (id: string, updates: Partial<GardenBed>) => {
@@ -887,10 +909,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             updateBed(interaction.bedId, { x: newShape.x, y: newShape.y });
         } else if (interaction.type === "resizing") {
           const rect = containerRef.current!.getBoundingClientRect();
-          const lx =
-            (touch.clientX - rect.left - panRef.current.x) / zoomRef.current;
-          const ly =
-            (touch.clientY - rect.top - panRef.current.y) / zoomRef.current;
+          const lx = (touch.clientX - rect.left - pan.x) / zoom;
+          const ly = (touch.clientY - rect.top - pan.y) / zoom;
           const dx = Math.round((lx - interaction.startX) / CELL);
           const dy = Math.round((ly - interaction.startY) / CELL);
           const o = interaction.original,
@@ -910,10 +930,13 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             nh = o.height - (ny - o.y);
           }
           const newShape = { x: nx, y: ny, width: nw, height: nh };
-          if (!hasCollision(newShape, interaction.bedId)) {
+          const plantBlocked = hasPlantOutsideBed(interaction.bedId, newShape);
+          if (!hasCollision(newShape, interaction.bedId) && !plantBlocked) {
             setResizeCollision(false);
             updateBed(interaction.bedId, newShape);
-          } else setResizeCollision(true);
+          } else {
+            setResizeCollision(true);
+          }
         }
       },
       [
@@ -1131,10 +1154,13 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             nh = o.height - (ny - o.y);
           }
           const newShape = { x: nx, y: ny, width: nw, height: nh };
-          if (!hasCollision(newShape, interaction.bedId)) {
+          const plantBlocked = hasPlantOutsideBed(interaction.bedId, newShape);
+          if (!hasCollision(newShape, interaction.bedId) && !plantBlocked) {
             setResizeCollision(false);
             updateBed(interaction.bedId, newShape);
-          } else setResizeCollision(true);
+          } else {
+            setResizeCollision(true);
+          }
         }
       },
       [interaction, toCell, updateBed, pan, zoom, beds, updatePlantDragPos],
