@@ -130,6 +130,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [isSpaceCollision, setIsSpaceCollision] = useState(false);
     const [isAroundCollision, setIsAroundCollision] = useState(false);
+    const [confirmDeleteBedId, setConfirmDeleteBedId] = useState<string | null>(
+      null,
+    );
 
     // Lokalna pozicija rastline med vlečenjem (za optimistični prikaz)
     const [draggingPlantPos, setDraggingPlantPos] = useState<{
@@ -1411,18 +1414,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                 <button
                   onMouseDown={(e) => e.stopPropagation()}
                   onTouchStart={(e) => e.stopPropagation()}
-                  onClick={async () => {
-                    const { error } = await supabase
-                      .from("beds")
-                      .delete()
-                      .eq("id", bed.id);
-                    if (error) {
-                      console.error("Delete error:", error);
-                      return;
-                    }
-                    removeBed(bed.id);
-                    selectBed(null);
-                  }}
+                  onClick={() => setConfirmDeleteBedId(bed.id)}
                   style={{
                     position: "absolute",
                     top: -8,
@@ -1830,6 +1822,89 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                 borderTop: "6px solid white",
               }}
             />
+          </div>
+        )}
+
+        {/* Confirm delete */}
+        {confirmDeleteBedId && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 100,
+              backgroundColor: "rgba(0,0,0,0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                backgroundColor: "white",
+                borderRadius: 14,
+                padding: "20px 24px",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.16)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+                minWidth: 260,
+                textAlign: "center",
+              }}
+            >
+              <p style={{ fontSize: 15, fontWeight: 600, color: "#1c1917" }}>
+                🗑️ Izbriši gredico?
+              </p>
+              <p style={{ fontSize: 13, color: "#78716c" }}>
+                Vse posajene rastline bodo odstranjene.
+              </p>
+              <div
+                style={{ display: "flex", gap: 8, justifyContent: "center" }}
+              >
+                <button
+                  onClick={() => setConfirmDeleteBedId(null)}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: 8,
+                    border: "1px solid #d4d0ca",
+                    backgroundColor: "white",
+                    fontSize: 13,
+                    cursor: "pointer",
+                    color: "#44403c",
+                  }}
+                >
+                  Prekliči
+                </button>
+                <button
+                  onClick={async () => {
+                    const { error } = await supabase
+                      .from("beds")
+                      .delete()
+                      .eq("id", confirmDeleteBedId);
+                    if (error) {
+                      console.error("Delete error:", error);
+                      return;
+                    }
+                    removeBed(confirmDeleteBedId);
+                    selectBed(null);
+                    setConfirmDeleteBedId(null);
+                  }}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: 8,
+                    border: "none",
+                    backgroundColor: "#dc2626",
+                    color: "white",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Izbriši
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

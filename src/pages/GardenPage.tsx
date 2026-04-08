@@ -58,6 +58,7 @@ const GardenPage: React.FC = () => {
   const [plantNeighbors, setPlantNeighbors] = useState<PlantNeighbor[]>([]);
 
   const [showSubGrid, setShowSubGrid] = useState(false);
+  const [confirmDeleteBed, setConfirmDeleteBed] = useState(false);
 
   // TODO: kasneje iz baze/userSettings
   const allowBadNeighborDrop = false;
@@ -169,18 +170,7 @@ const GardenPage: React.FC = () => {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={async () => {
-                const { error } = await supabase
-                  .from("beds")
-                  .delete()
-                  .eq("id", selectedBed.id);
-                if (error) {
-                  console.error("Delete error:", error);
-                  return; // ← ta return mora biti tukaj!
-                }
-                removeBed(selectedBed.id);
-                selectBed(null);
-              }}
+              onClick={() => setConfirmDeleteBed(true)}
               className="flex-1 py-2 rounded-xl bg-red-50 text-red-600 font-medium text-sm"
             >
               🗑️ Izbriši gredico
@@ -231,6 +221,50 @@ const GardenPage: React.FC = () => {
           userId={userId ?? ""}
           gardenId={gardenId ?? ""}
         />
+      )}
+
+      {/* Confirm delete*/}
+      {confirmDeleteBed && selectedBed && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
+          <div className="bg-white rounded-2xl p-6 shadow-xl mx-4 w-full max-w-xs text-center flex flex-col gap-4">
+            <p className="text-base font-semibold text-stone-800">
+              🗑️ Izbriši gredico?
+            </p>
+            <p className="text-sm text-stone-500">
+              Vse posajene rastline bodo odstranjene.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmDeleteBed(false)}
+                className="flex-1 py-2 rounded-xl border border-stone-200 text-sm text-stone-600 hover:bg-stone-50"
+              >
+                Prekliči
+              </button>
+              <button
+                onClick={async () => {
+                  const { error } = await supabase
+                    .from("beds")
+                    .delete()
+                    .eq("id", selectedBed.id);
+                  if (error) {
+                    console.error("Delete error:", error);
+                    return;
+                  }
+                  removeBed(selectedBed.id);
+                  selectBed(null);
+                  setConfirmDeleteBed(false);
+                }}
+                className="flex-1 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
+              >
+                Izbriši
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
