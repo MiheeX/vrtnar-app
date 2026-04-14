@@ -8,6 +8,10 @@ export interface BedPlant {
   cell_x: number;
   cell_y: number;
   quantity: number;
+  variety: string | null;
+  planted_at: string | null;
+  last_watered_at: string | null;
+  notes: string | null;
   plant: {
     id: string;
     name: string;

@@ -11,9 +11,10 @@ import { useGarden } from "../hooks/useGarden";
 import { supabase } from "../lib/supabaseClient";
 import { InventoryModal } from "../components/InventoryModal";
 import { PlantPickerModal } from "../components/PlantPickerModal";
-import { useBedPlants } from "../hooks/useBedPlants";
+import { useBedPlants, type BedPlant } from "../hooks/useBedPlants";
 import { SettingsModal } from "../components/SettingsModal";
 import type { PlantNeighbor } from "../types";
+import { PlantInfoModal } from "../components/PlantInfoModal";
 
 const GardenPage: React.FC = () => {
   const {
@@ -52,6 +53,7 @@ const GardenPage: React.FC = () => {
     cellX: number;
     cellY: number;
   } | null>(null);
+  const [plantInfoTarget, setPlantInfoTarget] = useState<BedPlant | null>(null);
 
   const { bedPlants, refresh: refreshBedPlants } = useBedPlants(gardenId ?? "");
 
@@ -133,6 +135,10 @@ const GardenPage: React.FC = () => {
           onReturnToInventory={(plantId) => addPlant(plantId, 1)}
           plantNeighbors={plantNeighbors}
           allowBadNeighborDrop={allowBadNeighborDrop}
+          onPlantInfo={(bedPlantId) => {
+            const bp = bedPlants.find((b) => b.id === bedPlantId) ?? null;
+            setPlantInfoTarget(bp);
+          }}
         />
       </div>
 
@@ -222,6 +228,23 @@ const GardenPage: React.FC = () => {
           gardenId={gardenId ?? ""}
         />
       )}
+
+      <PlantInfoModal
+        open={!!plantInfoTarget}
+        onClose={() => setPlantInfoTarget(null)}
+        bedPlant={plantInfoTarget}
+        plantNeighbors={plantNeighbors}
+        allBedPlants={bedPlants}
+        onUpdated={() => {
+          refreshBedPlants();
+          if (plantInfoTarget) {
+            // Posodobi lokalno da se takoj vidi sprememba
+            setPlantInfoTarget(
+              bedPlants.find((b) => b.id === plantInfoTarget.id) ?? null,
+            );
+          }
+        }}
+      />
 
       {/* Confirm delete*/}
       {confirmDeleteBed && selectedBed && (

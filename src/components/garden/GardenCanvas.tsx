@@ -30,6 +30,7 @@ interface Props {
   plantNeighbors: PlantNeighbor[];
   allowBadNeighborDrop?: boolean;
   showSubGrid?: boolean;
+  onPlantInfo: (bedPlantId: string) => void;
 }
 
 export interface GardenCanvasHandle {
@@ -100,6 +101,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       plantNeighbors,
       allowBadNeighborDrop = false,
       showSubGrid = false,
+      onPlantInfo,
     },
     ref,
   ) => {
@@ -1703,7 +1705,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
               <>
                 <button
                   onClick={() => {
-                    console.log("Plant info menu for:", contextMenu.bedPlantId);
+                    onPlantInfo(contextMenu.bedPlantId!);
                     setContextMenu(null);
                   }}
                   className="w-full px-4 py-3 text-left text-sm text-stone-700 hover:bg-stone-50 flex items-center gap-2"
