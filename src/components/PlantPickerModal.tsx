@@ -74,6 +74,9 @@ export function PlantPickerModal({
   const [badNeighborPlantIds, setBadNeighborPlantIds] = useState<Set<string>>(
     new Set(),
   );
+  const [goodNeighborPlantIds, setGoodNeighborPlantIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -107,6 +110,7 @@ export function PlantPickerModal({
   useEffect(() => {
     if (bedPlants.length === 0) {
       setBadNeighborPlantIds(new Set());
+      setGoodNeighborPlantIds(new Set());
       return;
     }
 
@@ -133,6 +137,7 @@ export function PlantPickerModal({
     }
 
     const load = async () => {
+      //bad neighbors
       const { data: neighborsA } = await supabase
         .from("plant_neighbors")
         .select("plant_id, neighbor_id")
@@ -149,6 +154,24 @@ export function PlantPickerModal({
       (neighborsA ?? []).forEach((n) => badIds.add(n.neighbor_id));
       (neighborsB ?? []).forEach((n) => badIds.add(n.plant_id));
       setBadNeighborPlantIds(badIds);
+
+      //good neighbors
+      const { data: goodA } = await supabase
+        .from("plant_neighbors")
+        .select("plant_id, neighbor_id")
+        .in("plant_id", neighborPlantIds)
+        .eq("relationship", "good");
+
+      const { data: goodB } = await supabase
+        .from("plant_neighbors")
+        .select("plant_id, neighbor_id")
+        .in("neighbor_id", neighborPlantIds)
+        .eq("relationship", "good");
+
+      const goodIds = new Set<string>();
+      (goodA ?? []).forEach((n) => goodIds.add(n.neighbor_id));
+      (goodB ?? []).forEach((n) => goodIds.add(n.plant_id));
+      setGoodNeighborPlantIds(goodIds);
     };
     load();
   }, [bedPlants, cellX, cellY]);
@@ -297,88 +320,100 @@ export function PlantPickerModal({
             </p>
           )}
           {!loading &&
-            filteredInventory.map((item) => {
-              const plant = item.plant;
-              if (!plant || item.quantity <= 0) return null;
+            [...filteredInventory]
+              .sort((a, b) => {
+                const score = (item: typeof a) => {
+                  if (!item.plant || item.quantity <= 0) return 3;
+                  const isGood = goodNeighborPlantIds.has(item.plant.id);
+                  const isBad = badNeighborPlantIds.has(item.plant.id);
+                  if (isGood) return 0;
+                  if (isBad) return 2;
+                  return 1;
+                };
+                return score(a) - score(b);
+              })
+              .map((item) => {
+                const plant = item.plant;
+                if (!plant || item.quantity <= 0) return null;
 
-              const spaceCollision = hasSpaceCollision(plant.cells_spacing);
-              const neighborCollision = hasNeighborSpacingCollision(
-                plant.id,
-                plant.around_cells_spacing,
-                plant.cells_spacing,
-              );
-              const badNeighbors = getBadNeighborsForPlant(
-                plant.id,
-                plant.cells_spacing,
-              );
-              const isBadNeighbor = badNeighbors.length > 0;
+                const spaceCollision = hasSpaceCollision(plant.cells_spacing);
+                const neighborCollision = hasNeighborSpacingCollision(
+                  plant.id,
+                  plant.around_cells_spacing,
+                  plant.cells_spacing,
+                );
+                const badNeighbors = getBadNeighborsForPlant(
+                  plant.id,
+                  plant.cells_spacing,
+                );
+                const isBadNeighbor = badNeighbors.length > 0;
 
-              const blocked = spaceCollision;
-              const hasWarning =
-                !blocked && (neighborCollision || isBadNeighbor);
+                const blocked = spaceCollision;
+                const hasWarning =
+                  !blocked && (neighborCollision || isBadNeighbor);
 
-              return (
-                <div
-                  key={item.id}
-                  className={`flex items-center gap-3 p-3 rounded-xl border ${
-                    blocked
-                      ? "border-red-200 bg-red-50"
-                      : hasWarning
-                        ? "border-yellow-200 bg-yellow-50"
-                        : "border-stone-200 bg-stone-50"
-                  }`}
-                >
-                  <span className="text-3xl">{plant.img}</span>
-
-                  <div className="flex-1">
-                    <p
-                      className={`font-medium ${blocked ? "text-red-700" : hasWarning ? "text-yellow-700" : "text-stone-800"}`}
-                    >
-                      {plant.name}
-                    </p>
-                    {plant.latin_name && (
-                      <p className="text-xs text-stone-400 italic">
-                        {plant.latin_name}
-                      </p>
-                    )}
-                    <p className="text-xs text-stone-500 mt-0.5">
-                      Količina:{" "}
-                      <span className="font-semibold">{item.quantity}</span>
-                    </p>
-                    {spaceCollision && (
-                      <p className="text-xs text-red-500 mt-0.5">
-                        🚫 Ni prostora — celica je zasedena
-                      </p>
-                    )}
-                    {!spaceCollision && neighborCollision && (
-                      <p className="text-xs text-yellow-600 mt-0.5">
-                        ⚠️ Preblizu drugi rastlini
-                      </p>
-                    )}
-                    {isBadNeighbor && (
-                      <p className="text-xs text-yellow-600 mt-0.5">
-                        ⚠️ Slab sosed z:{" "}
-                        {badNeighbors
-                          .map((n) => `${n.img} ${n.name}`)
-                          .join(", ")}
-                      </p>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => !blocked && plantInCell(plant.id)}
-                    disabled={blocked}
-                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex items-center gap-3 p-3 rounded-xl border ${
                       blocked
-                        ? "bg-stone-200 text-stone-400 cursor-not-allowed"
-                        : "bg-green-500 text-white hover:bg-green-600"
+                        ? "border-red-200 bg-red-50"
+                        : hasWarning
+                          ? "border-yellow-200 bg-yellow-50"
+                          : "border-stone-200 bg-stone-50"
                     }`}
                   >
-                    <Check size={14} /> Posadi
-                  </button>
-                </div>
-              );
-            })}
+                    <span className="text-3xl">{plant.img}</span>
+
+                    <div className="flex-1">
+                      <p
+                        className={`font-medium ${blocked ? "text-red-700" : hasWarning ? "text-yellow-700" : "text-stone-800"}`}
+                      >
+                        {plant.name}
+                      </p>
+                      {plant.latin_name && (
+                        <p className="text-xs text-stone-400 italic">
+                          {plant.latin_name}
+                        </p>
+                      )}
+                      <p className="text-xs text-stone-500 mt-0.5">
+                        Količina:{" "}
+                        <span className="font-semibold">{item.quantity}</span>
+                      </p>
+                      {spaceCollision && (
+                        <p className="text-xs text-red-500 mt-0.5">
+                          🚫 Ni prostora — celica je zasedena
+                        </p>
+                      )}
+                      {!spaceCollision && neighborCollision && (
+                        <p className="text-xs text-yellow-600 mt-0.5">
+                          ⚠️ Preblizu drugi rastlini
+                        </p>
+                      )}
+                      {isBadNeighbor && (
+                        <p className="text-xs text-yellow-600 mt-0.5">
+                          ⚠️ Slab sosed z:{" "}
+                          {badNeighbors
+                            .map((n) => `${n.img} ${n.name}`)
+                            .join(", ")}
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => !blocked && plantInCell(plant.id)}
+                      disabled={blocked}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        blocked
+                          ? "bg-stone-200 text-stone-400 cursor-not-allowed"
+                          : "bg-green-500 text-white hover:bg-green-600"
+                      }`}
+                    >
+                      <Check size={14} /> Posadi
+                    </button>
+                  </div>
+                );
+              })}
         </div>
       </div>
     </div>
