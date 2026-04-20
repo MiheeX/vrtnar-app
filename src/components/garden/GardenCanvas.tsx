@@ -661,10 +661,11 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
         setIsBadDrop(false);
 
-        if ((isBad || hasSpaceCollision) && !allowBadNeighborDrop) {
-          // Vrni na prvotno mesto — ne shranimo
-          return;
-        }
+        // Space collision vedno blokira — ne glede na setting
+        if (hasSpaceCollision) return;
+
+        // Bad neighbor blokira samo če setting ni vklopljen
+        if (isBad && !allowBadNeighborDrop) return;
 
         // Optimistično posodobi UI
         setLocalPlantOverrides((prev) => ({
