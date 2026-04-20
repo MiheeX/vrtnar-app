@@ -17,7 +17,7 @@ const SUBCELL = CELL / 2;
 const COLS = 20;
 const ROWS = 20;
 const MIN_CELLS = 1;
-const LONG_PRESS_MS = 500;
+const LONG_PRESS_MS = 200;
 
 interface Props {
   onBedSelect: (bed: GardenBed) => void;
