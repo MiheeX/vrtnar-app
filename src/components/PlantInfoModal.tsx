@@ -41,11 +41,8 @@ export function PlantInfoModal({
   onUpdated,
   onOptimisticUpdate,
 }: Props) {
-  const [editingVariety, setEditingVariety] = useState(false);
-  const [editingNotes, setEditingNotes] = useState(false);
   const [variety, setVariety] = useState("");
   const [notes, setNotes] = useState("");
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (bedPlant) {
