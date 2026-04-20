@@ -567,12 +567,26 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           newCellY,
         );
 
-        const hasSpaceCollision = checkSpaceCollision(
-          state.bedPlantId,
-          state.bedId,
-          newCellX,
-          newCellY,
+        //check out of bounds
+        const draggingBp = bedPlantsRef.current.find(
+          (bp) => bp.id === state.bedPlantId,
         );
+        const spacing = draggingBp?.plant?.cells_spacing ?? 1;
+        const maxSubCellX = bed ? bed.width * 2 : 0;
+        const maxSubCellY = bed ? bed.height * 2 : 0;
+        const isOutOfBounds =
+          newCellX < 0 ||
+          newCellY < 0 ||
+          newCellX + spacing > maxSubCellX ||
+          newCellY + spacing > maxSubCellY;
+        const hasSpaceCollision =
+          isOutOfBounds ||
+          checkSpaceCollision(
+            state.bedPlantId,
+            state.bedId,
+            newCellX,
+            newCellY,
+          );
 
         const aroundNames = !hasSpaceCollision
           ? getAroundCollisionInfo(
@@ -652,6 +666,23 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           state.cellX,
           state.cellY,
         );
+
+        //check out of bounds
+        const bed = beds.find((b) => b.id === state.bedId);
+        const draggingBp = bedPlantsRef.current.find(
+          (bp) => bp.id === state.bedPlantId,
+        );
+        const spacing = draggingBp?.plant?.cells_spacing ?? 1;
+        const maxSubCellX = bed ? bed.width * 2 : 0;
+        const maxSubCellY = bed ? bed.height * 2 : 0;
+        const isOutOfBounds =
+          state.cellX < 0 ||
+          state.cellY < 0 ||
+          state.cellX + spacing > maxSubCellX ||
+          state.cellY + spacing > maxSubCellY;
+
+        if (isOutOfBounds || hasSpaceCollision) return;
+
         const { isBad } = getBadNeighborInfo(
           state.bedPlantId,
           state.bedId,
