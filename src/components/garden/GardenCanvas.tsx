@@ -31,6 +31,8 @@ interface Props {
   allowBadNeighborDrop?: boolean;
   showSubGrid?: boolean;
   onPlantInfo: (bedPlantId: string) => void;
+  onPlantQuickInfo: (bedPlantId: string) => void;
+  onCloseBedPanel?: () => void;
 }
 
 export interface GardenCanvasHandle {
@@ -102,6 +104,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       allowBadNeighborDrop = false,
       showSubGrid = false,
       onPlantInfo,
+      onPlantQuickInfo,
+      onCloseBedPanel,
     },
     ref,
   ) => {
@@ -1655,9 +1659,11 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           }, LONG_PRESS_MS);
                         }}
                         onTouchEnd={(e) => {
+                          e.stopPropagation();
                           if (interaction.type !== "movingPlant") {
                             clearLongPress();
-                            e.stopPropagation();
+                            onCloseBedPanel?.();
+                            onPlantQuickInfo(bp.id);
                           }
                         }}
                         onMouseEnter={(e) => {
@@ -1698,6 +1704,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                             clearTimeout(hoverTimer.current);
                           hoverTimer.current = null;
                           setHoverTooltip(null);
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation(); // prepreči da klik pride do gredice
                         }}
                         style={{
                           position: "absolute",

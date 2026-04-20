@@ -11,11 +11,12 @@ import { useGarden } from "../hooks/useGarden";
 import { supabase } from "../lib/supabaseClient";
 import { InventoryModal } from "../components/InventoryModal";
 import { PlantPickerModal } from "../components/PlantPickerModal";
-import { useBedPlants, type BedPlant } from "../hooks/useBedPlants";
+import { useBedPlants } from "../hooks/useBedPlants";
 import { SettingsModal } from "../components/SettingsModal";
 import type { PlantNeighbor } from "../types";
 import { PlantInfoModal } from "../components/PlantInfoModal";
 import { useUserSettings } from "../hooks/useUserSettings";
+import { PlantQuickInfo } from "../components/PlantQuickInfoModal";
 
 const GardenPage: React.FC = () => {
   const {
@@ -45,7 +46,6 @@ const GardenPage: React.FC = () => {
   const { gardenId } = useGarden(userId);
   const {
     bedPlants,
-    loading,
     refresh: refreshBedPlants,
     applyOptimisticUpdate,
   } = useBedPlants(gardenId ?? "");
@@ -53,7 +53,15 @@ const GardenPage: React.FC = () => {
   const handleBedSelect = (bed: GardenBed) => {
     selectBed(bed.id);
     setEditName(bed.name);
+    setQuickInfoTargetId(null);
   };
+
+  //quick info
+  const [quickInfoTargetId, setQuickInfoTargetId] = useState<string | null>(
+    null,
+  );
+  const quickInfoTarget =
+    bedPlants.find((b) => String(b.id) === String(quickInfoTargetId)) ?? null;
 
   const [inventoryOpen, setInventoryOpen] = useState(false);
 
@@ -147,6 +155,19 @@ const GardenPage: React.FC = () => {
           allowBadNeighborDrop={allowBadNeighborDrop}
           onPlantInfo={(bedPlantId) => {
             setPlantInfoTargetId(bedPlantId);
+          }}
+          onPlantQuickInfo={(bedPlantId) => {
+            setQuickInfoTargetId(bedPlantId);
+          }}
+          onCloseBedPanel={() => selectBed(null)}
+        />
+
+        <PlantQuickInfo
+          bedPlant={quickInfoTarget}
+          onClose={() => setQuickInfoTargetId(null)}
+          onOpenDetail={() => {
+            setPlantInfoTargetId(quickInfoTargetId);
+            setQuickInfoTargetId(null);
           }}
         />
       </div>

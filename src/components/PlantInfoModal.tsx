@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Droplets, Pencil, Check } from "lucide-react";
+import { X, Droplets } from "lucide-react";
 import type { BedPlant } from "../hooks/useBedPlants";
 import type { PlantNeighbor } from "../types";
 import { supabase } from "../lib/supabaseClient";
