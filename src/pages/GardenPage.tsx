@@ -15,6 +15,7 @@ import { useBedPlants, type BedPlant } from "../hooks/useBedPlants";
 import { SettingsModal } from "../components/SettingsModal";
 import type { PlantNeighbor } from "../types";
 import { PlantInfoModal } from "../components/PlantInfoModal";
+import { useUserSettings } from "../hooks/useUserSettings";
 
 const GardenPage: React.FC = () => {
   const {
@@ -26,6 +27,7 @@ const GardenPage: React.FC = () => {
     removeBed,
     updateBed,
   } = useGardenStore();
+
   const selectedBed = beds.find((b) => b.id === selectedBedId) ?? null;
   const [editName, setEditName] = useState("");
   const canvasRef = useRef<GardenCanvasHandle>(null); // ← ref na canvas
@@ -34,6 +36,8 @@ const GardenPage: React.FC = () => {
   const { userId } = useCurrentUser();
   //const { inventory, addPlant, removePlant, decrementPlant, consumePlant } =
   //  useUserInventory(userId ?? "");
+
+  const { settings, updateSetting } = useUserSettings(userId);
 
   const { inventory, addPlant, removePlant, decrementPlant, consumePlant } =
     useUserInventory(userId ?? "");
@@ -67,8 +71,8 @@ const GardenPage: React.FC = () => {
 
   const [plantNeighbors, setPlantNeighbors] = useState<PlantNeighbor[]>([]);
 
-  const [showSubGrid, setShowSubGrid] = useState(false);
-  const [allowBadNeighborDrop, setAllowBadNeighborDrop] = useState(false);
+  const showSubGrid = settings.show_sub_grid;
+  const allowBadNeighborDrop = settings.allow_bad_neighbor_drop;
   const [confirmDeleteBed, setConfirmDeleteBed] = useState(false);
 
   useEffect(() => {
@@ -210,9 +214,11 @@ const GardenPage: React.FC = () => {
 
       <SettingsModal
         showSubGrid={showSubGrid}
-        onToggleSubGrid={() => setShowSubGrid((s) => !s)}
+        onToggleSubGrid={() => updateSetting("show_sub_grid", !showSubGrid)}
         allowBadNeighborDrop={allowBadNeighborDrop}
-        onToggleAllowBadNeighborDrop={() => setAllowBadNeighborDrop((s) => !s)}
+        onToggleAllowBadNeighborDrop={() =>
+          updateSetting("allow_bad_neighbor_drop", !allowBadNeighborDrop)
+        }
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         inventory={inventory}
