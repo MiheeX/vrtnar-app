@@ -216,24 +216,34 @@ export function PlantPickerModal({
     const badIds = new Set<string>();
     const goodIds = new Set<string>();
 
-    plantNeighbors.forEach((pn) => {
-      const aIsNeighbor = neighborPlantIds.includes(pn.plant_id);
-      const bIsNeighbor = neighborPlantIds.includes(pn.neighbor_id);
-      if (!aIsNeighbor && !bIsNeighbor) return;
+    // Za vsako rastlino v inventarju izračunaj odnos z VSEMI sosedi
+    const allPlantIds = [
+      ...new Set(inventory.map((i) => i.plant?.id).filter(Boolean)),
+    ] as string[];
 
-      if (pn.relationship === "bad") {
-        if (aIsNeighbor) badIds.add(pn.neighbor_id);
-        if (bIsNeighbor) badIds.add(pn.plant_id);
-      }
-      if (pn.relationship === "good") {
-        if (aIsNeighbor) goodIds.add(pn.neighbor_id);
-        if (bIsNeighbor) goodIds.add(pn.plant_id);
-      }
+    allPlantIds.forEach((candidateId) => {
+      let hasBad = false;
+      let hasGood = false;
+
+      neighborPlantIds.forEach((neighborId) => {
+        const rel = plantNeighbors.find(
+          (pn) =>
+            (pn.plant_id === candidateId && pn.neighbor_id === neighborId) ||
+            (pn.plant_id === neighborId && pn.neighbor_id === candidateId),
+        );
+        if (rel?.relationship === "bad") hasBad = true;
+        if (rel?.relationship === "good") hasGood = true;
+      });
+
+      if (hasBad)
+        badIds.add(candidateId); // slab vsaj za enega - slaba
+      else if (hasGood) goodIds.add(candidateId); // dober za vsaj enega, slab za nikogar - dobra
+      // sicer - nevtralna (ni v nobeni množici)
     });
 
     setBadNeighborPlantIds(badIds);
     setGoodNeighborPlantIds(goodIds);
-  }, [bedPlants, cellX, cellY, plantNeighbors]);
+  }, [bedPlants, cellX, cellY, plantNeighbors, inventory]);
 
   if (!open) return null;
 
@@ -459,7 +469,7 @@ export function PlantPickerModal({
                       </p>
                       {spaceCollision && (
                         <p className="text-xs text-red-500 mt-0.5">
-                          🚫 Ni prostora — celica je zasedena
+                          🚫 Ni prostora
                         </p>
                       )}
                       {!spaceCollision && neighborCollision && (
