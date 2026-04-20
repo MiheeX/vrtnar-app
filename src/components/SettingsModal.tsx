@@ -13,6 +13,8 @@ interface Props {
   onRemove: (userPlantId: string) => void;
   showSubGrid: boolean;
   onToggleSubGrid: () => void;
+  allowBadNeighborDrop: Boolean;
+  onToggleAllowBadNeighborDrop: () => void;
 }
 
 export function SettingsModal({
@@ -23,6 +25,8 @@ export function SettingsModal({
   onRemove,
   showSubGrid,
   onToggleSubGrid,
+  allowBadNeighborDrop: allowBadNeighborDrop,
+  onToggleAllowBadNeighborDrop: onToggleAllowBadNeighborDrop,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("settings");
 
@@ -94,6 +98,29 @@ export function SettingsModal({
                   <span
                     className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
                       showSubGrid ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+              {/* Dovoli sajenje zraven slabih sosedov */}
+              <div className="flex items-center justify-between py-3 border-b border-stone-100">
+                <div>
+                  <p className="text-sm font-medium text-stone-700">
+                    Sajenje ob slabih sosedih
+                  </p>
+                  <p className="text-xs text-stone-400 mt-0.5">
+                    Dovoli sajenje zraven slabih sosedov
+                  </p>
+                </div>
+                <button
+                  onClick={onToggleAllowBadNeighborDrop}
+                  className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
+                    allowBadNeighborDrop ? "bg-green-500" : "bg-stone-300"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+                      allowBadNeighborDrop ? "translate-x-5" : "translate-x-0"
                     }`}
                   />
                 </button>

@@ -68,10 +68,8 @@ const GardenPage: React.FC = () => {
   const [plantNeighbors, setPlantNeighbors] = useState<PlantNeighbor[]>([]);
 
   const [showSubGrid, setShowSubGrid] = useState(false);
+  const [allowBadNeighborDrop, setAllowBadNeighborDrop] = useState(false);
   const [confirmDeleteBed, setConfirmDeleteBed] = useState(false);
-
-  // TODO: kasneje iz baze/userSettings
-  const allowBadNeighborDrop = false;
 
   useEffect(() => {
     supabase
@@ -213,6 +211,8 @@ const GardenPage: React.FC = () => {
       <SettingsModal
         showSubGrid={showSubGrid}
         onToggleSubGrid={() => setShowSubGrid((s) => !s)}
+        allowBadNeighborDrop={allowBadNeighborDrop}
+        onToggleAllowBadNeighborDrop={() => setAllowBadNeighborDrop((s) => !s)}
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         inventory={inventory}
