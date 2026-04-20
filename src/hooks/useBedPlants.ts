@@ -24,6 +24,22 @@ export interface BedPlant {
 export function useBedPlants(gardenId: string) {
   const [bedPlants, setBedPlants] = useState<BedPlant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [optimisticOverrides, setOptimisticOverrides] = useState<
+    Record<string, Partial<BedPlant>>
+  >({});
+
+  const applyOptimisticUpdate = (id: string, fields: Partial<BedPlant>) => {
+    setOptimisticOverrides((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], ...fields },
+    }));
+  };
+
+  // Merge pri vrnitvi
+  const mergedBedPlants = bedPlants.map((bp) => ({
+    ...bp,
+    ...optimisticOverrides[bp.id],
+  }));
 
   const fetch = useCallback(async () => {
     if (!gardenId) return;
@@ -44,5 +60,10 @@ export function useBedPlants(gardenId: string) {
 
   const refresh = () => fetch();
 
-  return { bedPlants, loading, refresh };
+  return {
+    bedPlants: mergedBedPlants,
+    loading,
+    refresh,
+    applyOptimisticUpdate,
+  };
 }

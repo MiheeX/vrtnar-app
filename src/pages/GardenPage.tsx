@@ -39,6 +39,12 @@ const GardenPage: React.FC = () => {
     useUserInventory(userId ?? "");
 
   const { gardenId } = useGarden(userId);
+  const {
+    bedPlants,
+    loading,
+    refresh: refreshBedPlants,
+    applyOptimisticUpdate,
+  } = useBedPlants(gardenId ?? "");
 
   const handleBedSelect = (bed: GardenBed) => {
     selectBed(bed.id);
@@ -53,9 +59,11 @@ const GardenPage: React.FC = () => {
     cellX: number;
     cellY: number;
   } | null>(null);
-  const [plantInfoTarget, setPlantInfoTarget] = useState<BedPlant | null>(null);
-
-  const { bedPlants, refresh: refreshBedPlants } = useBedPlants(gardenId ?? "");
+  const [plantInfoTargetId, setPlantInfoTargetId] = useState<string | null>(
+    null,
+  );
+  const plantInfoTarget =
+    bedPlants.find((b) => b.id === plantInfoTargetId) ?? null;
 
   const [plantNeighbors, setPlantNeighbors] = useState<PlantNeighbor[]>([]);
 
@@ -136,8 +144,7 @@ const GardenPage: React.FC = () => {
           plantNeighbors={plantNeighbors}
           allowBadNeighborDrop={allowBadNeighborDrop}
           onPlantInfo={(bedPlantId) => {
-            const bp = bedPlants.find((b) => b.id === bedPlantId) ?? null;
-            setPlantInfoTarget(bp);
+            setPlantInfoTargetId(bedPlantId);
           }}
         />
       </div>
@@ -230,19 +237,15 @@ const GardenPage: React.FC = () => {
       )}
 
       <PlantInfoModal
-        open={!!plantInfoTarget}
-        onClose={() => setPlantInfoTarget(null)}
+        open={!!plantInfoTargetId}
+        onClose={() => setPlantInfoTargetId(null)}
         bedPlant={plantInfoTarget}
         plantNeighbors={plantNeighbors}
         allBedPlants={bedPlants}
-        onUpdated={() => {
-          refreshBedPlants();
-          if (plantInfoTarget) {
-            // Posodobi lokalno da se takoj vidi sprememba
-            setPlantInfoTarget(
-              bedPlants.find((b) => b.id === plantInfoTarget.id) ?? null,
-            );
-          }
+        onUpdated={refreshBedPlants}
+        onOptimisticUpdate={(field, value) => {
+          if (plantInfoTargetId)
+            applyOptimisticUpdate(plantInfoTargetId, { [field]: value });
         }}
       />
 

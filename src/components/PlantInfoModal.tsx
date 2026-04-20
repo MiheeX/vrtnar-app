@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Droplets, Pencil, Check } from "lucide-react";
 import type { BedPlant } from "../hooks/useBedPlants";
 import type { PlantNeighbor } from "../types";
@@ -11,6 +11,10 @@ interface Props {
   plantNeighbors: PlantNeighbor[];
   allBedPlants: BedPlant[];
   onUpdated: () => void;
+  onOptimisticUpdate: (
+    field: "variety" | "notes",
+    value: string | null,
+  ) => void;
 }
 
 function formatDate(dateStr: string | null): string {
@@ -35,12 +39,20 @@ export function PlantInfoModal({
   plantNeighbors,
   allBedPlants,
   onUpdated,
+  onOptimisticUpdate,
 }: Props) {
   const [editingVariety, setEditingVariety] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   const [variety, setVariety] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (bedPlant) {
+      setVariety(bedPlant.variety ?? "");
+      setNotes(bedPlant.notes ?? "");
+    }
+  }, [bedPlant?.id]); // samo ob menjavi rastline, ne ob vsakem renderu
 
   if (!open || !bedPlant) return null;
 
@@ -79,13 +91,12 @@ export function PlantInfoModal({
   const badNeighbors = getNeighborPlants(neighborIds.bad);
 
   const saveField = async (field: "variety" | "notes", value: string) => {
-    setSaving(true);
+    onOptimisticUpdate(field, value || null); // takoj
     await supabase
       .from("bed_plants")
       .update({ [field]: value || null })
       .eq("id", bedPlant.id);
-    setSaving(false);
-    onUpdated();
+    // NI refreshBedPlants — ni potreben
   };
 
   const waterPlant = async () => {
@@ -155,36 +166,15 @@ export function PlantInfoModal({
             </p>
 
             {/* Sorta */}
-            <div className="flex items-center justify-between p-3 rounded-xl border border-stone-200 bg-stone-50">
-              <div className="flex-1">
-                <p className="text-xs text-stone-400">Sorta</p>
-                {editingVariety ? (
-                  <input
-                    autoFocus
-                    value={variety}
-                    onChange={(e) => setVariety(e.target.value)}
-                    onBlur={async () => {
-                      await saveField("variety", variety);
-                      setEditingVariety(false);
-                    }}
-                    className="text-sm text-stone-800 bg-transparent border-b border-green-400 focus:outline-none w-full mt-0.5"
-                    placeholder="npr. Cherry, Roma..."
-                  />
-                ) : (
-                  <p className="text-sm font-medium text-stone-700 mt-0.5">
-                    {bedPlant.variety ?? "—"}
-                  </p>
-                )}
-              </div>
-              <button
-                onClick={() => {
-                  setVariety(bedPlant.variety ?? "");
-                  setEditingVariety(true);
-                }}
-                className="ml-2 p-1.5 text-stone-400 hover:text-stone-600"
-              >
-                <Pencil size={14} />
-              </button>
+            <div className="p-3 rounded-xl border border-stone-200 bg-stone-50">
+              <p className="text-xs text-stone-400">Sorta</p>
+              <input
+                value={variety}
+                onChange={(e) => setVariety(e.target.value)}
+                onBlur={() => saveField("variety", variety)}
+                className="text-sm font-medium text-stone-700 bg-transparent focus:outline-none w-full mt-0.5"
+                placeholder="npr. Cherry, Roma..."
+              />
             </div>
 
             {/* Datum sajenja */}
@@ -202,54 +192,16 @@ export function PlantInfoModal({
           </div>
 
           {/* Opombe */}
-          <div className="flex flex-col gap-2">
-            <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide">
-              Opombe
-            </p>
-            <div className="p-3 rounded-xl border border-stone-200 bg-stone-50">
-              {editingNotes ? (
-                <div className="flex flex-col gap-2">
-                  <textarea
-                    autoFocus
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={3}
-                    className="text-sm text-stone-800 bg-transparent focus:outline-none w-full resize-none"
-                    placeholder="Dodaj opombe..."
-                  />
-                  <button
-                    onClick={async () => {
-                      await saveField("notes", notes);
-                      setEditingNotes(false);
-                    }}
-                    disabled={saving}
-                    className="self-end flex items-center gap-1 px-3 py-1 rounded-lg bg-green-500 text-white text-xs font-medium"
-                  >
-                    <Check size={12} /> Shrani
-                  </button>
-                </div>
-              ) : (
-                <div
-                  className="flex items-start justify-between gap-2 cursor-pointer"
-                  onClick={() => {
-                    setNotes(bedPlant.notes ?? "");
-                    setEditingNotes(true);
-                  }}
-                >
-                  <p className="text-sm text-stone-600">
-                    {bedPlant.notes ?? (
-                      <span className="text-stone-400 italic">
-                        Ni opomb. Tapni za dodajanje...
-                      </span>
-                    )}
-                  </p>
-                  <Pencil
-                    size={14}
-                    className="text-stone-400 flex-shrink-0 mt-0.5"
-                  />
-                </div>
-              )}
-            </div>
+          <div className="p-3 rounded-xl border border-stone-200 bg-stone-50">
+            <p className="text-xs text-stone-400">Opombe</p>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={() => saveField("notes", notes)}
+              rows={3}
+              className="text-sm text-stone-600 bg-transparent focus:outline-none w-full resize-none"
+              placeholder="Ni opomb. Tapni za pisanje..."
+            />
           </div>
 
           {/* Sosedje v vrtu */}
