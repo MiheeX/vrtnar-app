@@ -154,6 +154,15 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       currentBadNames: string[];
     } | null>(null);
 
+    //hoover tooltip
+    const [hoverTooltip, setHoverTooltip] = useState<{
+      x: number;
+      y: number;
+      name: string;
+      planted_at: string | null;
+    } | null>(null);
+    const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     // Ref za svež bedPlants znotraj event callbackov
     const bedPlantsRef = useRef(bedPlants);
     bedPlantsRef.current = bedPlants;
@@ -363,6 +372,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           grabOffsetX: 0,
           grabOffsetY: 0,
         });
+
+        if (hoverTimer.current) clearTimeout(hoverTimer.current);
+        setHoverTooltip(null);
       },
       [beds],
     );
@@ -1648,6 +1660,45 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                             e.stopPropagation();
                           }
                         }}
+                        onMouseEnter={(e) => {
+                          if (interaction.type === "movingPlant") return;
+                          const rect =
+                            containerRef.current!.getBoundingClientRect();
+                          const x = e.clientX - rect.left;
+                          const y = e.clientY - rect.top;
+                          hoverTimer.current = setTimeout(() => {
+                            setHoverTooltip({
+                              x,
+                              y,
+                              name: bp.plant?.name ?? "",
+                              planted_at: bp.planted_at ?? null,
+                            });
+                          }, 500);
+                        }}
+                        onMouseMove={(e) => {
+                          // Resetiraj timer ob premiku
+                          if (hoverTimer.current)
+                            clearTimeout(hoverTimer.current);
+                          setHoverTooltip(null);
+                          const rect =
+                            containerRef.current!.getBoundingClientRect();
+                          const x = e.clientX - rect.left;
+                          const y = e.clientY - rect.top;
+                          hoverTimer.current = setTimeout(() => {
+                            setHoverTooltip({
+                              x,
+                              y,
+                              name: bp.plant?.name ?? "",
+                              planted_at: bp.planted_at ?? null,
+                            });
+                          }, 500);
+                        }}
+                        onMouseLeave={() => {
+                          if (hoverTimer.current)
+                            clearTimeout(hoverTimer.current);
+                          hoverTimer.current = null;
+                          setHoverTooltip(null);
+                        }}
                         style={{
                           position: "absolute",
                           left: displayX * SUBCELL,
@@ -1841,21 +1892,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                 Boldano = trenutno preblizu
               </div>
             )}
-
-            {/* Puščica navzdol */}
-            <div
-              style={{
-                position: "absolute",
-                bottom: -6,
-                left: "50%",
-                transform: "translateX(-50%)",
-                width: 0,
-                height: 0,
-                borderLeft: "6px solid transparent",
-                borderRight: "6px solid transparent",
-                borderTop: "6px solid white",
-              }}
-            />
           </div>
         )}
 
@@ -1974,6 +2010,60 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             >
               ✓ Potrdi gredico
             </button>
+          </div>
+        )}
+
+        {/* Tooltip on hoover */}
+        {hoverTooltip && (
+          <div
+            style={{
+              position: "absolute",
+              left: hoverTooltip.x,
+              top: hoverTooltip.y,
+              transform: "translateX(-50%) translateY(calc(-100% - 10px))",
+              zIndex: 100,
+              backgroundColor: "white",
+              borderRadius: 8,
+              boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+              border: "1px solid #e7e5e4",
+              padding: "6px 10px",
+              fontSize: 12,
+              pointerEvents: "none",
+              minWidth: 120,
+            }}
+          >
+            <p style={{ fontWeight: 600, color: "#1c1917", marginBottom: 2 }}>
+              {hoverTooltip.name}
+            </p>
+            <p style={{ color: "#78716c" }}>
+              🌱{"Posajeno: "}
+              {hoverTooltip.planted_at
+                ? new Date(hoverTooltip.planted_at).toLocaleDateString(
+                    "sl-SI",
+                    {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    },
+                  )
+                : "Datum ni znan"}
+            </p>
+            {/* Sem dodaš nova polja v prihodnje */}
+
+            {/* Puščica */}
+            <div
+              style={{
+                position: "absolute",
+                bottom: -6,
+                left: "50%",
+                transform: "translateX(-50%)",
+                width: 0,
+                height: 0,
+                borderLeft: "6px solid transparent",
+                borderRight: "6px solid transparent",
+                borderTop: "6px solid white",
+              }}
+            />
           </div>
         )}
       </div>
