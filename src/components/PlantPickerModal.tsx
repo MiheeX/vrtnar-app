@@ -266,7 +266,13 @@ export function PlantPickerModal({
   ): boolean =>
     bedPlants.some((bp) => {
       if (bp.plant_id === plantId) return false;
-      return rectsOverlap(
+      const bpAroundSpacing = Array.isArray(bp.plant)
+        ? (bp.plant[0]?.around_cells_spacing ?? 0)
+        : (bp.plant?.around_cells_spacing ?? 0);
+
+      // Preverimo obe smeri:
+      // 1. Nova rastlina z svojim odmikom zadene obstoječo
+      const newHitsExisting = rectsOverlap(
         cellX - aroundSpacing,
         cellY - aroundSpacing,
         cellsSpacing + aroundSpacing * 2,
@@ -274,6 +280,17 @@ export function PlantPickerModal({
         bp.cell_y,
         getSpacing(bp),
       );
+      // 2. Obstoječa rastlina z svojim odmikom zadene novo
+      const existingHitsNew = rectsOverlap(
+        cellX,
+        cellY,
+        cellsSpacing,
+        bp.cell_x - bpAroundSpacing,
+        bp.cell_y - bpAroundSpacing,
+        getSpacing(bp) + bpAroundSpacing * 2,
+      );
+
+      return newHitsExisting || existingHitsNew;
     });
 
   const getBadNeighborsForPlant = (
