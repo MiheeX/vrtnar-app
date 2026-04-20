@@ -233,6 +233,7 @@ const GardenPage: React.FC = () => {
           onConsumeFromInventory={(plantId) => consumePlant(plantId, 1)}
           userId={userId ?? ""}
           gardenId={gardenId ?? ""}
+          plantNeighbors={plantNeighbors}
         />
       )}
 

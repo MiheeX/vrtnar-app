@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { X, Check } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
-import type { UserInventoryPlant } from "../types/index";
+import type { UserInventoryPlant, PlantNeighbor } from "../types/index";
 
 interface BedPlant {
   id: string;
@@ -34,6 +34,7 @@ interface Props {
   userId: string;
   gardenId: string;
   onConsumeFromInventory: (plantId: string) => void;
+  plantNeighbors: PlantNeighbor[];
 }
 
 const getSpacing = (bp: BedPlant): number => {
@@ -69,6 +70,7 @@ export function PlantPickerModal({
   onConsumeFromInventory,
   userId,
   gardenId,
+  plantNeighbors,
 }: Props) {
   const [bedPlants, setBedPlants] = useState<BedPlant[]>([]);
   const [badNeighborPlantIds, setBadNeighborPlantIds] = useState<Set<string>>(
@@ -107,6 +109,8 @@ export function PlantPickerModal({
     load();
   }, [open, bedId]);
 
+  /*
+  //Commented since code now uses data frem cache for faster reading
   useEffect(() => {
     if (bedPlants.length === 0) {
       setBadNeighborPlantIds(new Set());
@@ -175,6 +179,61 @@ export function PlantPickerModal({
     };
     load();
   }, [bedPlants, cellX, cellY]);
+  */
+
+  //Use form cache:
+  useEffect(() => {
+    if (bedPlants.length === 0) {
+      setBadNeighborPlantIds(new Set());
+      setGoodNeighborPlantIds(new Set());
+      return;
+    }
+
+    const neighborPlantIds = [
+      ...new Set(
+        bedPlants
+          .filter((bp) =>
+            rectsOverlap(
+              cellX - 1,
+              cellY - 1,
+              3,
+              bp.cell_x,
+              bp.cell_y,
+              getSpacing(bp),
+            ),
+          )
+          .map((bp) => bp.plant_id),
+      ),
+    ];
+
+    if (neighborPlantIds.length === 0) {
+      setBadNeighborPlantIds(new Set());
+      setGoodNeighborPlantIds(new Set());
+      return;
+    }
+
+    // Izračun iz že naloženih plantNeighbors — brez Supabase fetcha
+    const badIds = new Set<string>();
+    const goodIds = new Set<string>();
+
+    plantNeighbors.forEach((pn) => {
+      const aIsNeighbor = neighborPlantIds.includes(pn.plant_id);
+      const bIsNeighbor = neighborPlantIds.includes(pn.neighbor_id);
+      if (!aIsNeighbor && !bIsNeighbor) return;
+
+      if (pn.relationship === "bad") {
+        if (aIsNeighbor) badIds.add(pn.neighbor_id);
+        if (bIsNeighbor) badIds.add(pn.plant_id);
+      }
+      if (pn.relationship === "good") {
+        if (aIsNeighbor) goodIds.add(pn.neighbor_id);
+        if (bIsNeighbor) goodIds.add(pn.plant_id);
+      }
+    });
+
+    setBadNeighborPlantIds(badIds);
+    setGoodNeighborPlantIds(goodIds);
+  }, [bedPlants, cellX, cellY, plantNeighbors]);
 
   if (!open) return null;
 
@@ -320,22 +379,32 @@ export function PlantPickerModal({
             </p>
           )}
           {!loading &&
-            [...filteredInventory]
-              .sort((a, b) => {
-                const score = (item: typeof a) => {
-                  if (!item.plant || item.quantity <= 0) return 3;
-                  const isGood = goodNeighborPlantIds.has(item.plant.id);
-                  const isBad = badNeighborPlantIds.has(item.plant.id);
-                  if (isGood) return 0;
-                  if (isBad) return 2;
-                  return 1;
-                };
-                return score(a) - score(b);
-              })
-              .map((item) => {
-                const plant = item.plant;
-                if (!plant || item.quantity <= 0) return null;
+            (() => {
+              const sorted = [...filteredInventory]
+                .filter((item) => item.plant && item.quantity > 0)
+                .sort((a, b) => {
+                  const score = (item: typeof a) => {
+                    if (goodNeighborPlantIds.has(item.plant!.id)) return 0;
+                    if (badNeighborPlantIds.has(item.plant!.id)) return 2;
+                    return 1;
+                  };
+                  return score(a) - score(b);
+                });
 
+              const good = sorted.filter((i) =>
+                goodNeighborPlantIds.has(i.plant!.id),
+              );
+              const neutral = sorted.filter(
+                (i) =>
+                  !goodNeighborPlantIds.has(i.plant!.id) &&
+                  !badNeighborPlantIds.has(i.plant!.id),
+              );
+              const bad = sorted.filter((i) =>
+                badNeighborPlantIds.has(i.plant!.id),
+              );
+
+              const renderItem = (item: (typeof filteredInventory)[0]) => {
+                const plant = item.plant!;
                 const spaceCollision = hasSpaceCollision(plant.cells_spacing);
                 const neighborCollision = hasNeighborSpacingCollision(
                   plant.id,
@@ -347,7 +416,6 @@ export function PlantPickerModal({
                   plant.cells_spacing,
                 );
                 const isBadNeighbor = badNeighbors.length > 0;
-
                 const blocked = spaceCollision;
                 const hasWarning =
                   !blocked && (neighborCollision || isBadNeighbor);
@@ -360,14 +428,23 @@ export function PlantPickerModal({
                         ? "border-red-200 bg-red-50"
                         : hasWarning
                           ? "border-yellow-200 bg-yellow-50"
-                          : "border-stone-200 bg-stone-50"
+                          : goodNeighborPlantIds.has(plant.id)
+                            ? "border-green-200 bg-green-50"
+                            : "border-stone-200 bg-stone-50"
                     }`}
                   >
                     <span className="text-3xl">{plant.img}</span>
-
                     <div className="flex-1">
                       <p
-                        className={`font-medium ${blocked ? "text-red-700" : hasWarning ? "text-yellow-700" : "text-stone-800"}`}
+                        className={`font-medium ${
+                          blocked
+                            ? "text-red-700"
+                            : hasWarning
+                              ? "text-yellow-700"
+                              : goodNeighborPlantIds.has(plant.id)
+                                ? "text-green-700"
+                                : "text-stone-800"
+                        }`}
                       >
                         {plant.name}
                       </p>
@@ -399,7 +476,6 @@ export function PlantPickerModal({
                         </p>
                       )}
                     </div>
-
                     <button
                       onClick={() => !blocked && plantInCell(plant.id)}
                       disabled={blocked}
@@ -413,7 +489,37 @@ export function PlantPickerModal({
                     </button>
                   </div>
                 );
-              })}
+              };
+
+              return (
+                <>
+                  {good.length > 0 && (
+                    <>
+                      <p className="text-xs font-semibold text-green-600 uppercase tracking-wide px-1">
+                        ✅ Dobri sosedje
+                      </p>
+                      {good.map(renderItem)}
+                    </>
+                  )}
+                  {neutral.length > 0 && (
+                    <>
+                      <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide px-1 mt-1">
+                        ⬜ Nevtralni
+                      </p>
+                      {neutral.map(renderItem)}
+                    </>
+                  )}
+                  {bad.length > 0 && (
+                    <>
+                      <p className="text-xs font-semibold text-yellow-600 uppercase tracking-wide px-1 mt-1">
+                        ⚠️ Slabi sosedje
+                      </p>
+                      {bad.map(renderItem)}
+                    </>
+                  )}
+                </>
+              );
+            })()}
         </div>
       </div>
     </div>
