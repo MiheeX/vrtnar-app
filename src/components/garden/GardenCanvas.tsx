@@ -1668,20 +1668,21 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                             onPlantQuickInfo(bp.id);
                           }
                         }}
+                        /*
                         onMouseEnter={(e) => {
                           if (interaction.type === "movingPlant") return;
                           const rect =
                             containerRef.current!.getBoundingClientRect();
-                          const x = e.clientX - rect.left;
-                          const y = e.clientY - rect.top;
+                          //const x = e.clientX - rect.left;
+                          //const y = e.clientY - rect.top;
                           hoverTimer.current = setTimeout(() => {
-                            /*
+                            
                             setHoverTooltip({
                               x,
                               y,
                               name: bp.plant?.name ?? "",
                               planted_at: bp.planted_at ?? null,
-                            });*/
+                            });
                           }, 500);
                         }}
                         onMouseMove={(e) => {
@@ -1691,18 +1692,19 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           setHoverTooltip(null);
                           const rect =
                             containerRef.current!.getBoundingClientRect();
-                          const x = e.clientX - rect.left;
-                          const y = e.clientY - rect.top;
+                          //const x = e.clientX - rect.left;
+                          //const y = e.clientY - rect.top;
                           hoverTimer.current = setTimeout(() => {
-                            /*
+                            
                             setHoverTooltip({
                               x,
                               y,
                               name: bp.plant?.name ?? "",
                               planted_at: bp.planted_at ?? null,
-                            });*/
+                            });
                           }, 500);
                         }}
+                        */
                         onMouseLeave={() => {
                           if (hoverTimer.current)
                             clearTimeout(hoverTimer.current);

@@ -21,7 +21,7 @@ export function PlantQuickInfo({ bedPlant, onClose, onOpenDetail }: Props) {
   const plant = bedPlant.plant;
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none">
+    <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none pb-safe">
       <div
         className="pointer-events-auto mx-auto max-w-lg bg-white border-t border-stone-200 rounded-t-2xl shadow-xl px-4 py-3 flex items-center gap-3"
         onMouseDown={(e) => e.stopPropagation()}

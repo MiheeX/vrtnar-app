@@ -161,16 +161,16 @@ const GardenPage: React.FC = () => {
           }}
           onCloseBedPanel={() => selectBed(null)}
         />
-
-        <PlantQuickInfo
-          bedPlant={quickInfoTarget}
-          onClose={() => setQuickInfoTargetId(null)}
-          onOpenDetail={() => {
-            setPlantInfoTargetId(quickInfoTargetId);
-            setQuickInfoTargetId(null);
-          }}
-        />
       </div>
+
+      <PlantQuickInfo
+        bedPlant={quickInfoTarget}
+        onClose={() => setQuickInfoTargetId(null)}
+        onOpenDetail={() => {
+          setPlantInfoTargetId(quickInfoTargetId);
+          setQuickInfoTargetId(null);
+        }}
+      />
 
       {/* Info panel — pan mode, bed selected */}
       {mode === "pan" && selectedBed && (
