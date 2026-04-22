@@ -362,6 +362,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       (bp: BedPlant) => {
         const bed = beds.find((b) => b.id === bp.bed_id);
         if (!bed) return;
+        setContextMenu(null);
         setDragTooltip(null);
         setIsBadDrop(false);
         setIsSpaceCollision(false);
@@ -1654,9 +1655,10 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           if (mode !== "pan") return;
                           if (contextMenu) setContextMenu(null);
                           clearLongPress();
-                          longPressTimer.current = setTimeout(() => {
-                            startPlantDrag(bp);
-                          }, LONG_PRESS_MS);
+                          longPressTimer.current = setTimeout(
+                            () => startPlantDrag(bp),
+                            LONG_PRESS_MS,
+                          );
                         }}
                         onTouchEnd={(e) => {
                           e.stopPropagation();
