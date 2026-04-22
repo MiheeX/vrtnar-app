@@ -1661,9 +1661,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           );
                         }}
                         onTouchEnd={(e) => {
-                          e.stopPropagation();
                           if (interaction.type !== "movingPlant") {
                             clearLongPress();
+                            e.stopPropagation();
                             onCloseBedPanel?.();
                             onPlantQuickInfo(bp.id);
                           }
