@@ -1675,12 +1675,13 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           const x = e.clientX - rect.left;
                           const y = e.clientY - rect.top;
                           hoverTimer.current = setTimeout(() => {
+                            /*
                             setHoverTooltip({
                               x,
                               y,
                               name: bp.plant?.name ?? "",
                               planted_at: bp.planted_at ?? null,
-                            });
+                            });*/
                           }, 500);
                         }}
                         onMouseMove={(e) => {
@@ -1693,12 +1694,13 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           const x = e.clientX - rect.left;
                           const y = e.clientY - rect.top;
                           hoverTimer.current = setTimeout(() => {
+                            /*
                             setHoverTooltip({
                               x,
                               y,
                               name: bp.plant?.name ?? "",
                               planted_at: bp.planted_at ?? null,
-                            });
+                            });*/
                           }, 500);
                         }}
                         onMouseLeave={() => {
