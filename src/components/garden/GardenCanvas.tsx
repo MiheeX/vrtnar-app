@@ -876,6 +876,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const onTouchMove = useCallback(
       (e: React.TouchEvent) => {
         clearLongPress();
+
+        if (contextMenu) setContextMenu(null);
+
         if (e.touches.length === 2) {
           if (lastPinchDist.current === null || lastPinchMid.current === null)
             return;
