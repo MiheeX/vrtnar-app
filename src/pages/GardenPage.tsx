@@ -15,6 +15,7 @@ import { useBedPlants } from "../hooks/useBedPlants";
 import { SettingsModal } from "../components/SettingsModal";
 import type { PlantNeighbor } from "../types";
 import { PlantInfoModal } from "../components/PlantInfoModal";
+import type { PlantInfoModalHandle } from "../components/PlantInfoModal";
 import { useUserSettings } from "../hooks/useUserSettings";
 import { PlantQuickInfo } from "../components/PlantQuickInfoModal";
 
@@ -82,6 +83,8 @@ const GardenPage: React.FC = () => {
   const showSubGrid = settings.show_sub_grid;
   const allowBadNeighborDrop = settings.allow_bad_neighbor_drop;
   const [confirmDeleteBed, setConfirmDeleteBed] = useState(false);
+
+  const plantInfoModalRef = useRef<PlantInfoModalHandle>(null);
 
   useEffect(() => {
     supabase
@@ -167,7 +170,23 @@ const GardenPage: React.FC = () => {
       <PlantQuickInfo
         bedPlant={quickInfoTarget}
         onClose={() => setQuickInfoTargetId(null)}
+        onSwipeStart={(top) => {
+          // top ni več potreben tukaj — prepareOpen je že poklican v QuickInfo
+          setPlantInfoTargetId(quickInfoTargetId);
+        }}
+        plantInfoModalRef={plantInfoModalRef}
+        onSwipeCommit={() => {
+          plantInfoModalRef.current?.commitOpen();
+          setQuickInfoTargetId(null);
+        }}
+        onSwipeCancel={(onDone) => {
+          plantInfoModalRef.current?.cancelOpen(() => {
+            setPlantInfoTargetId(null);
+            onDone();
+          });
+        }}
         onOpenDetail={() => {
+          plantInfoModalRef.current?.commitOpen();
           setPlantInfoTargetId(quickInfoTargetId);
           setQuickInfoTargetId(null);
         }}
@@ -266,7 +285,8 @@ const GardenPage: React.FC = () => {
       )}
 
       <PlantInfoModal
-        open={!!plantInfoTargetId}
+        ref={plantInfoModalRef}
+        open={!!plantInfoTarget}
         onClose={() => setPlantInfoTargetId(null)}
         bedPlant={plantInfoTarget}
         plantNeighbors={plantNeighbors}
