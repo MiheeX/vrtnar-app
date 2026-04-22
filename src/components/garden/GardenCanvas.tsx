@@ -33,6 +33,7 @@ interface Props {
   onPlantInfo: (bedPlantId: string) => void;
   onPlantQuickInfo: (bedPlantId: string) => void;
   onCloseBedPanel?: () => void;
+  activeQuickInfoId?: string | null;
 }
 
 export interface GardenCanvasHandle {
@@ -106,6 +107,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       onPlantInfo,
       onPlantQuickInfo,
       onCloseBedPanel,
+      activeQuickInfoId,
     },
     ref,
   ) => {
@@ -1591,6 +1593,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                       : override
                         ? override.cellY
                         : bp.cell_y;
+                  const isQuickInfoActive = activeQuickInfoId === bp.id;
 
                   return (
                     <div
@@ -1615,14 +1618,18 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                               : isAroundCollision
                                 ? "rgba(251,191,36,0.15)"
                                 : "rgba(34,197,94,0.15)"
-                            : "rgba(34,197,94,0.08)",
+                            : isQuickInfoActive
+                              ? "rgba(34,197,94,0.18)" // ← zelenkast overlay
+                              : "rgba(34,197,94,0.08)",
                           border: isBeingDragged
                             ? isSpaceCollision
                               ? "1px solid rgba(220,38,38,0.4)"
                               : isAroundCollision
                                 ? "1px solid rgba(251,191,36,0.4)"
                                 : "1px solid rgba(34,197,94,0.3)"
-                            : "1px solid rgba(34,197,94,0.2)",
+                            : isQuickInfoActive
+                              ? "2px solid rgba(34,197,94,0.8)" // ← bolden border
+                              : "1px solid rgba(34,197,94,0.2)",
                           borderRadius: 3,
                           pointerEvents: "none",
                         }}

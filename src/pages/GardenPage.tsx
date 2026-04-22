@@ -160,6 +160,7 @@ const GardenPage: React.FC = () => {
             setQuickInfoTargetId(bedPlantId);
           }}
           onCloseBedPanel={() => selectBed(null)}
+          activeQuickInfoId={quickInfoTargetId}
         />
       </div>
 
