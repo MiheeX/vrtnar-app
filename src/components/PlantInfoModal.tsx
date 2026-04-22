@@ -69,6 +69,7 @@ export const PlantInfoModal = forwardRef<PlantInfoModalHandle, Props>(
     useImperativeHandle(ref, () => ({
       prepareOpen: (top: number) => {
         quickInfoTopRef.current = top;
+        setDragY(top); // ← takoj, modal je v DOMu
       },
       startDrag: (delta: number) => {
         setIsDragging(true);
@@ -92,12 +93,14 @@ export const PlantInfoModal = forwardRef<PlantInfoModalHandle, Props>(
       }
     }, [bedPlant?.id]);
 
+    /*
     useEffect(() => {
       // Ko se modal odpre, začne na poziciji QuickInfo panela
       if (open) setDragY(quickInfoTopRef.current);
     }, [open]);
+    */
 
-    if (!open || !bedPlant) return null;
+    if (!bedPlant) return null;
 
     const plant = bedPlant.plant;
     const daysSinceWatered = daysSince(bedPlant.last_watered_at);
@@ -164,10 +167,13 @@ export const PlantInfoModal = forwardRef<PlantInfoModalHandle, Props>(
     };
 
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center">
+      <div
+        className="fixed inset-0 z-50 flex items-end justify-center"
+        style={{ pointerEvents: open ? "auto" : "none" }}
+      >
         <div
           className="absolute inset-0 bg-black/40"
-          style={{ opacity: backdropOpacity }}
+          style={{ opacity: backdropOpacity, display: open ? "block" : "none" }}
           onClick={onClose}
         />
         <div

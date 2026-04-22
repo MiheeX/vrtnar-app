@@ -170,8 +170,7 @@ const GardenPage: React.FC = () => {
       <PlantQuickInfo
         bedPlant={quickInfoTarget}
         onClose={() => setQuickInfoTargetId(null)}
-        onSwipeStart={(top) => {
-          // top ni več potreben tukaj — prepareOpen je že poklican v QuickInfo
+        onSwipeStart={() => {
           setPlantInfoTargetId(quickInfoTargetId);
         }}
         plantInfoModalRef={plantInfoModalRef}
