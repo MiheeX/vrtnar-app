@@ -1723,6 +1723,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                         }}
                         onClick={(e) => {
                           e.stopPropagation(); // prepreči da klik pride do gredice
+                          if (interaction.type === "movingPlant") return; // ne odpri če smo vlekli
+                          onPlantQuickInfo(bp.id);
                         }}
                         style={{
                           position: "absolute",
