@@ -6,6 +6,7 @@ import { supabase } from "../lib/supabaseClient";
 import { PlantIcon } from "./PlantIcon";
 import { PlantCalendar } from "./PlantCalendar";
 import { formatDepth } from "../lib/units";
+import { HarvestPeek, HarvestSection } from "./HarvestDetails";
 
 // Bottom sheet za rastlino z dvema položajema (kot Google Maps):
 // "peek" = mali povzetek na dnu, "full" = podrobnosti čez skoraj cel zaslon.
@@ -27,6 +28,8 @@ interface Props {
   ) => void;
   // Odstrani rastlino iz gredice (z možnostjo razveljavitve)
   onRemove?: (bedPlantId: string) => void;
+  // Pogled "Pobiranje": list pokaže podatke o zrelosti in pobiranju
+  harvestMode?: boolean;
 }
 
 const SNAP_TRANSITION = "transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)";
@@ -81,6 +84,7 @@ function PlantSheetInner({
   onUpdated,
   onOptimisticUpdate,
   onRemove,
+  harvestMode = false,
 }: Props & { bedPlant: BedPlant }) {
   const [variety, setVariety] = useState(bedPlant.variety ?? "");
   const [notes, setNotes] = useState(bedPlant.notes ?? "");
@@ -419,14 +423,18 @@ function PlantSheetInner({
               </div>
             </div>
 
-            <div className="flex flex-col gap-1 mb-4 text-sm text-stone-500">
-              <p>🌱 {formatDate(bedPlant.planted_at, "Datum ni znan")}</p>
-              {bedPlant.last_watered_at && (
-                <p>
-                  💧 Zalivano: {formatDate(bedPlant.last_watered_at, "—")}
-                </p>
-              )}
-            </div>
+            {harvestMode ? (
+              <HarvestPeek bedPlant={bedPlant} />
+            ) : (
+              <div className="flex flex-col gap-1 mb-4 text-sm text-stone-500">
+                <p>🌱 {formatDate(bedPlant.planted_at, "Datum ni znan")}</p>
+                {bedPlant.last_watered_at && (
+                  <p>
+                    💧 Zalivano: {formatDate(bedPlant.last_watered_at, "—")}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Isti gumb razširi ali skrči sheet (višina peek dela ostane enaka) */}
             <button
@@ -454,6 +462,9 @@ function PlantSheetInner({
               overscrollBehavior: "contain",
             }}
           >
+            {/* Pogled Pobiranje: najprej zrelost in okno pobiranja */}
+            {harvestMode && <HarvestSection bedPlant={bedPlant} />}
+
             {/* Zalivanje */}
             <div className="mt-3 flex items-center justify-between p-3 rounded-xl bg-blue-50 border border-blue-100">
               <div className="flex items-center gap-2">

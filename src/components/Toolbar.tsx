@@ -1,4 +1,4 @@
-import { Menu, ShoppingBasket, Undo2 } from "lucide-react";
+import { Carrot, Menu, ShoppingBasket, Undo2 } from "lucide-react";
 
 interface ToolbarProps {
   gardenName: string;
@@ -7,6 +7,10 @@ interface ToolbarProps {
   canUndo: boolean;
   undoLabel?: string;
   onUndo: () => void;
+  // Pogled "Pobiranje": vklop/izklop in število zrelih (+ prezrelih) rastlin
+  harvestOn: boolean;
+  harvestCount: number;
+  onHarvestToggle: () => void;
 }
 
 export function Toolbar({
@@ -16,6 +20,9 @@ export function Toolbar({
   canUndo,
   undoLabel,
   onUndo,
+  harvestOn,
+  harvestCount,
+  onHarvestToggle,
 }: ToolbarProps) {
   return (
     <div className="flex items-center gap-2 px-2 py-2 bg-white border-b border-gray-200 shadow-sm">
@@ -35,6 +42,22 @@ export function Toolbar({
 
       {/* Desna stran - razveljavi in inventar */}
       <div className="flex items-center gap-1 shrink-0">
+        <button
+          onClick={onHarvestToggle}
+          aria-pressed={harvestOn}
+          className={`relative p-2.5 rounded-lg transition-colors ${
+            harvestOn ? "bg-green-100 text-green-700" : "text-gray-600 active:bg-gray-100"
+          }`}
+          title={harvestOn ? "Izklopi pogled Pobiranje" : "Pobiranje: pokaži zrele rastline"}
+          aria-label="Pobiranje"
+        >
+          <Carrot size={21} />
+          {harvestCount > 0 && (
+            <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-green-600 text-white text-[10px] font-bold leading-4 text-center">
+              {harvestCount}
+            </span>
+          )}
+        </button>
         <button
           onClick={onUndo}
           disabled={!canUndo}

@@ -33,6 +33,8 @@ import { NewBedSheet } from "../components/garden/NewBedSheet";
 import { BedActionBar } from "../components/garden/BedActionBar";
 import { PlantPlaceSheet } from "../components/garden/PlantPlaceSheet";
 import { PlacementBar } from "../components/garden/PlacementBar";
+import { HarvestSheet, type HarvestItem } from "../components/garden/HarvestSheet";
+import { HARVEST_ORDER, harvestMap } from "../lib/harvest";
 import {
   buildRelations,
   isPlaceable,
@@ -62,6 +64,16 @@ function findFreeSpot(
   }
   return best;
 }
+
+// Pogled "Pobiranje" je nastavitev naprave (localStorage)
+const HARVEST_VIEW_KEY = "vrtnar.harvestView";
+const readHarvestView = () => {
+  try {
+    return localStorage.getItem(HARVEST_VIEW_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
 
 const vibrate = (ms: number) => {
   try {
@@ -116,6 +128,8 @@ const GardenPage: React.FC = () => {
   const quickInfoTarget = bedPlants.find((b) => b.id === quickInfoTargetId) ?? null;
   const [sheetSnap, setSheetSnap] = useState<SheetSnap>("peek");
   const [dragWarning, setDragWarning] = useState<DragWarning | null>(null);
+  const [harvestOn, setHarvestOnState] = useState(readHarvestView);
+  const [harvestOpen, setHarvestOpen] = useState(false);
 
   const [plantNeighbors, setPlantNeighbors] = useState<PlantNeighbor[]>([]);
   const relations = useMemo(() => buildRelations(plantNeighbors), [plantNeighbors]);
@@ -478,6 +492,42 @@ const GardenPage: React.FC = () => {
         })
       : null;
 
+  // ── Pobiranje ───────────────────────────────────────────────────────────
+
+  const setHarvestOn = (on: boolean) => {
+    setHarvestOnState(on);
+    try {
+      localStorage.setItem(HARVEST_VIEW_KEY, on ? "1" : "0");
+    } catch {
+      // brez localStorage (zasebno okno) — pogled velja do osvežitve
+    }
+  };
+  const ripeness = harvestMap(bedPlants);
+  const harvestItems: HarvestItem[] = bedPlants
+    .filter((bp) => ripeness[bp.id])
+    .map((bp) => ({
+      bp,
+      info: ripeness[bp.id],
+      bedName: beds.find((b) => b.id === bp.bed_id)?.name ?? "",
+    }))
+    .sort(
+      (a, b) =>
+        HARVEST_ORDER[a.info.status] - HARVEST_ORDER[b.info.status] ||
+        (a.info.status === "soon" ? a.info.days - b.info.days : b.info.days - a.info.days),
+    );
+  const harvestCount = harvestItems.filter((i) => i.info.status !== "soon").length;
+  const openHarvestList = () => {
+    setHarvestOn(true);
+    setHarvestOpen(true);
+  };
+  const pickHarvestPlant = (id: string) => {
+    setHarvestOpen(false);
+    selectBed(null);
+    canvasRef.current?.focusPlant(id);
+    setQuickInfoTargetId(id);
+    setSheetSnap("peek");
+  };
+
   const showEmptyState = bedsLoaded && beds.length === 0 && !placing;
   const bottomBar = placing ? "placing" : selectedBed ? "bed" : null;
   const lastUndo = undoHistory[undoHistory.length - 1];
@@ -494,6 +544,9 @@ const GardenPage: React.FC = () => {
         canUndo={undoHistory.length > 0}
         undoLabel={lastUndo?.label}
         onUndo={undoLast}
+        harvestOn={harvestOn}
+        harvestCount={harvestCount}
+        onHarvestToggle={() => (harvestOn ? setHarvestOn(false) : openHarvestList())}
       />
 
       <UpgradeModal limits={planApi.limits} onUpgrade={startProCheckout} />
@@ -513,6 +566,8 @@ const GardenPage: React.FC = () => {
         onRenameGarden={gardensApi.renameGarden}
         onDeleteGarden={gardensApi.deleteGarden}
         onAddPlants={() => setAddPlantsOpen(true)}
+        harvestCount={harvestCount}
+        onOpenHarvest={openHarvestList}
         showSubGrid={showSubGrid}
         onToggleSubGrid={() => updateSetting("show_sub_grid", !showSubGrid)}
         allowBadNeighborDrop={allowBadNeighborDrop}
@@ -552,6 +607,7 @@ const GardenPage: React.FC = () => {
           onRemovePlant={removePlantFromBed}
           onPlantsChanged={refreshBedPlants}
           onDragWarning={setDragWarning}
+          harvest={harvestOn && !placing ? ripeness : null}
         />
 
         {/* Statusno območje pod zgornjo vrstico: obvestila + Razveljavi, opozorila med vlečenjem */}
@@ -600,6 +656,19 @@ const GardenPage: React.FC = () => {
           />
         )}
 
+        {/* Pogled Pobiranje: hiter dostop do seznama */}
+        {harvestOn && !placing && (
+          <button
+            onClick={() => setHarvestOpen(true)}
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{ bottom: `calc(${bottomBar ? 196 : 20}px + env(safe-area-inset-bottom))` }}
+            className="absolute left-4 z-30 flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-full bg-white shadow-lg border border-green-200 text-sm font-semibold text-green-800 active:bg-green-50 animate-pop-in"
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-green-600" />
+            {harvestCount > 0 ? `${harvestCount} za pobiranje` : "Pobiranje"}
+          </button>
+        )}
+
         {!placing && (
           <GardenFab
             hasBeds={beds.length > 0}
@@ -623,6 +692,18 @@ const GardenPage: React.FC = () => {
           if (quickInfoTargetId) applyOptimisticUpdate(quickInfoTargetId, { [field]: value });
         }}
         onRemove={removePlantFromBed}
+        harvestMode={harvestOn && !placing}
+      />
+
+      <HarvestSheet
+        open={harvestOpen}
+        onClose={() => setHarvestOpen(false)}
+        items={harvestItems}
+        onPick={pickHarvestPlant}
+        onTurnOff={() => {
+          setHarvestOpen(false);
+          setHarvestOn(false);
+        }}
       />
 
       <NewBedSheet open={newBedOpen} onClose={() => setNewBedOpen(false)} onCreate={createBed} />
