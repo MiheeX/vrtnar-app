@@ -19,8 +19,8 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    // React Compiler pravila so že v reactHooks.configs.flat.recommended (v7)
     rules: {
-      "react-compiler/react-compiler": "warn",
       "react-hooks/exhaustive-deps": "warn",
     },
   },

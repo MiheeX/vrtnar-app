@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 type SyncTable =
@@ -31,8 +31,11 @@ const DEBOUNCE_MS = 300;
 // Ob vrnitvi v aplikacijo (telefon iz ozadja) in ob ponovni povezavi naloži vse,
 // ker se lahko dogodki med prekinitvijo izgubijo.
 export function useRealtimeSync(userId: string | null, handlers: SyncHandlers) {
+  // Najnovejši handlerji za dogodke (posodobljeni po renderju)
   const handlersRef = useRef(handlers);
-  handlersRef.current = handlers;
+  useLayoutEffect(() => {
+    handlersRef.current = handlers;
+  });
 
   useEffect(() => {
     if (!userId) return;

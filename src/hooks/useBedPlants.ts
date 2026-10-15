@@ -75,6 +75,7 @@ export function useBedPlants(gardenId: string) {
   }, [gardenId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- nalaganje iz Supabase; setState šele po await
     fetch();
   }, [gardenId, fetch]);
 
