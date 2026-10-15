@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import type { UserInventoryPlant } from "../types/index";
 
@@ -6,19 +6,24 @@ export function useUserInventory(userId: string) {
   const [inventory, setInventory] = useState<UserInventoryPlant[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchInventory = useCallback(async () => {
     if (!userId) return;
-    const fetch = async () => {
-      const { data } = await supabase
-        .from("user_plants")
-        .select("*, plant:plants(*)")
-        .eq("user_id", userId)
-        .order("created_at");
-      setInventory(data ?? []);
-      setLoading(false);
-    };
-    fetch();
+    const { data, error } = await supabase
+      .from("user_plants")
+      .select("*, plant:plants(*)")
+      .eq("user_id", userId)
+      .order("created_at");
+    if (error) {
+      console.error("useUserInventory error:", error);
+      return;
+    }
+    setInventory(data ?? []);
+    setLoading(false);
   }, [userId]);
+
+  useEffect(() => {
+    fetchInventory();
+  }, [fetchInventory]);
 
   const addPlant = async (plantId: string, quantity: number = 1) => {
     // Preveri ali že obstaja v inventarju
@@ -113,5 +118,6 @@ export function useUserInventory(userId: string) {
     removePlant,
     decrementPlant,
     consumePlant,
+    refresh: fetchInventory,
   };
 }

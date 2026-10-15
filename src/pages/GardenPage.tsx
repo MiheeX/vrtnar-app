@@ -7,6 +7,7 @@ import { Toolbar } from "../components/Toolbar";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useUserInventory } from "../hooks/useUserInventory";
 import { useGardens } from "../hooks/useGardens";
+import { useRealtimeSync } from "../hooks/useRealtimeSync";
 import { SideMenu } from "../components/SideMenu";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
@@ -39,10 +40,20 @@ const GardenPage: React.FC = () => {
   //const { inventory, addPlant, removePlant, decrementPlant, consumePlant } =
   //  useUserInventory(userId ?? "");
 
-  const { settings, updateSetting } = useUserSettings(userId);
+  const {
+    settings,
+    updateSetting,
+    refresh: refreshSettings,
+  } = useUserSettings(userId);
 
-  const { inventory, addPlant, removePlant, decrementPlant, consumePlant } =
-    useUserInventory(userId ?? "");
+  const {
+    inventory,
+    addPlant,
+    removePlant,
+    decrementPlant,
+    consumePlant,
+    refresh: refreshInventory,
+  } = useUserInventory(userId ?? "");
 
   const gardensApi = useGardens(userId);
   const gardenId = gardensApi.currentGardenId;
@@ -114,6 +125,37 @@ const GardenPage: React.FC = () => {
       cancelled = true;
     };
   }, [gardenId, selectBed]);
+
+  // Ponovno naloži gredice trenutnega vrta (brez čiščenja izbire)
+  const gardenIdRef = useRef(gardenId);
+  gardenIdRef.current = gardenId;
+  const refetchBeds = async () => {
+    const id = gardenId;
+    if (!id) return;
+    const { data, error } = await supabase
+      .from("beds")
+      .select("*")
+      .eq("garden_id", id);
+    if (error) {
+      console.error("Napaka pri nalaganju gredic:", error);
+      return;
+    }
+    // Medtem preklopljen vrt → ne prepiši gredic novega vrta
+    if (data && gardenIdRef.current === id)
+      useGardenStore.setState({ beds: data });
+  };
+
+  // Spremembe z drugih naprav/zavihkov se pokažejo brez osvežitve strani
+  useRealtimeSync(userId, {
+    gardens: () => gardensApi.refresh(),
+    beds: () => {
+      refetchBeds();
+      gardensApi.refresh(); // število gredic v meniju
+    },
+    bed_plants: () => refreshBedPlants(),
+    user_plants: () => refreshInventory(),
+    user_settings: () => refreshSettings(),
+  });
 
   return (
     <div className="flex flex-col h-screen bg-stone-50 select-none">

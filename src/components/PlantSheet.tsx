@@ -114,12 +114,18 @@ function PlantSheetInner({
   const closeRef = useRef(close);
   closeRef.current = close;
 
-  // Nova rastlina → naloži njena polja
+  // Nova rastlina ali sprememba z druge naprave → naloži polja,
+  // razen tistega, ki ga uporabnik prav zdaj ureja
+  const varietyRef = useRef<HTMLInputElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    setVariety(bedPlant.variety ?? "");
-    setNotes(bedPlant.notes ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bedPlant.id]);
+    if (document.activeElement !== varietyRef.current)
+      setVariety(bedPlant.variety ?? "");
+  }, [bedPlant.id, bedPlant.variety]);
+  useEffect(() => {
+    if (document.activeElement !== notesRef.current)
+      setNotes(bedPlant.notes ?? "");
+  }, [bedPlant.id, bedPlant.notes]);
 
   // Višina zaslona (tipkovnica, rotacija, Firefox URL bar)
   useEffect(() => {
@@ -448,6 +454,7 @@ function PlantSheetInner({
               <div className="p-3 rounded-xl border border-stone-200 bg-stone-50">
                 <p className="text-xs text-stone-400">Sorta</p>
                 <input
+                  ref={varietyRef}
                   value={variety}
                   onChange={(e) => setVariety(e.target.value)}
                   onBlur={() => saveField("variety", variety)}
@@ -472,6 +479,7 @@ function PlantSheetInner({
             <div className="p-3 rounded-xl border border-stone-200 bg-stone-50">
               <p className="text-xs text-stone-400">Opombe</p>
               <textarea
+                ref={notesRef}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 onBlur={() => saveField("notes", notes)}

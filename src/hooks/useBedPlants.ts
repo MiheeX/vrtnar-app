@@ -49,8 +49,28 @@ export function useBedPlants(gardenId: string) {
         "*, plant:plants(id, name, img, cells_spacing, around_cells_spacing)",
       )
       .eq("garden_id", gardenId);
-    if (error) console.error("useBedPlants error:", error);
-    setBedPlants(data ?? []);
+    if (error) {
+      console.error("useBedPlants error:", error);
+      return;
+    }
+    const rows: BedPlant[] = data ?? [];
+    setBedPlants(rows);
+    // Optimistične vrednosti, ki jih baza že ima, niso več potrebne —
+    // sicer bi zakrile spremembe z druge naprave
+    setOptimisticOverrides((prev) => {
+      const next: Record<string, Partial<BedPlant>> = {};
+      for (const [id, fields] of Object.entries(prev)) {
+        const row = rows.find((r) => r.id === id);
+        if (!row) continue;
+        const pending = Object.fromEntries(
+          Object.entries(fields).filter(
+            ([key, value]) => row[key as keyof BedPlant] !== value,
+          ),
+        );
+        if (Object.keys(pending).length > 0) next[id] = pending;
+      }
+      return next;
+    });
     setLoading(false);
   }, [gardenId]);
 
