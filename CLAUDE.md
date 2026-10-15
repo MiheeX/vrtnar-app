@@ -53,7 +53,11 @@ src/
   types/index.ts, types/garden.ts
 ```
 
-## Data model (Supabase, inferred from client code — no migrations in repo)
+## Supabase access for Claude
+
+`.mcp.json` connects the official Supabase MCP server, limited to this project (`project_ref`); you sign in with OAuth in the browser on first use. Use it to inspect the schema, run read queries, apply migrations and generate types. Follow the `supabase-data` skill, and ask before destructive SQL: this is the live database.
+
+## Data model (Supabase, inferred from client code — no migrations in repo; verify against the live schema via MCP)
 
 | table | key columns |
 |---|---|
