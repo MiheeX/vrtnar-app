@@ -21,9 +21,29 @@ export interface Plant {
   id: string;
   name: string;
   latin_name: string | null;
-  img: string | null;
-  cells_spacing: number; // koliko celic zasede rastlina
-  around_cells_spacing: number; // varnostni pas okoli (collision)
+  img: string | null; // emoji (prikaže se kot Twemoji slika)
+  icon: string | null; // ključ lastne ikone v PlantIcon (ima prednost pred img)
+  cells_spacing: number; // odtis na platnu (sub-celice) — poenostavitev, ne realni razmik
+  around_cells_spacing: number; // dodaten varnostni pas na platnu (sub-celice)
+  family: string | null; // botanična družina (kolobarjenje)
+  description: string | null;
+  water_need: number | null; // 1 malo, 2 zmerno, 3 veliko
+  sun_need: number | null; // 1 polsenca, 2 delno sonce, 3 polno sonce
+  watering_interval_days: number | null;
+  days_to_harvest_min: number | null;
+  days_to_harvest_max: number | null;
+  // Setveni koledar: meseci 1–12
+  sow_indoors: number[];
+  sow_outdoors: number[];
+  transplant: number[];
+  harvest: number[];
+  // Realni podatki (viri v supabase/migrations/20261016130000_plant_real_data.sql)
+  row_spacing_cm: number | null; // razdalja med vrstami
+  plant_spacing_cm: number | null; // razdalja v vrsti
+  sow_depth_cm: number | null; // 0 = svetlobna kalivka
+  germination_days_min: number | null;
+  germination_days_max: number | null;
+  germination_temp_min_c: number | null; // najnižja temperatura tal za kalitev
   created_at: string;
 }
 
@@ -55,6 +75,7 @@ export interface PlantNeighbor {
   plant_id: string;
   neighbor_id: string;
   relationship: "good" | "bad";
+  sources?: string[]; // npr. ["BUND", "Pušenjak"] — viri v supabase/migrations/20261016140000_plant_neighbors_sourced.sql
 }
 
 // Vrt

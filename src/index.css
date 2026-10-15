@@ -46,3 +46,14 @@
 .animate-pop-in {
   animation: pop-in 0.22s cubic-bezier(0.32, 0.72, 0, 1);
 }
+
+/* Obroček dolgega pritiska: pokaže se šele po kratkem zamiku (brez utripa ob tapu) */
+@keyframes longpress-fill {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.longpress-ring {
+  animation: fade-in 0.1s ease-out 0.06s both;
+}

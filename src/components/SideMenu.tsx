@@ -43,6 +43,8 @@ interface Props {
   onToggleSubGrid: () => void;
   allowBadNeighborDrop: boolean;
   onToggleAllowBadNeighborDrop: () => void;
+  plantFromInventory: boolean;
+  onTogglePlantFromInventory: () => void;
   onSignOut: () => void;
 }
 
@@ -102,6 +104,8 @@ export function SideMenu({
   onToggleSubGrid,
   allowBadNeighborDrop,
   onToggleAllowBadNeighborDrop,
+  plantFromInventory,
+  onTogglePlantFromInventory,
   onSignOut,
 }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -563,6 +567,33 @@ export function SideMenu({
           label="Sajenje ob slabih sosedih"
         />
       </div>
+      <div className="flex items-center justify-between gap-3 py-3 border-b border-stone-100">
+        <div>
+          <p className="text-[15px] text-stone-800">Sadi iz zaloge</p>
+          <p className="text-xs text-stone-400 mt-0.5">
+            Pri sajenju so na voljo samo rastline iz zaloge — vsaka posajena porabi eno.
+            Izklopljeno: vse rastline iz kataloga.
+          </p>
+        </div>
+        <Toggle
+          on={plantFromInventory}
+          onClick={onTogglePlantFromInventory}
+          label="Sadi iz zaloge"
+        />
+      </div>
+      {/* Navedba avtorjev za Twemoji ikone (licenca CC-BY 4.0) */}
+      <p className="pt-4 text-[11px] text-stone-400">
+        Ikone emojijev:{" "}
+        <a
+          href="https://github.com/jdecked/twemoji"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+        >
+          Twemoji
+        </a>{" "}
+        (CC-BY 4.0)
+      </p>
     </div>
   );
 

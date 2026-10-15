@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { X, Plus, Minus, Trash2, Sparkles, AlertTriangle } from "lucide-react";
 import { usePlants } from "../hooks/usePlants";
+import { PlantIcon } from "./PlantIcon";
+import { formatRealSpacing } from "../lib/units";
+import { formatMonths, nowAction } from "../lib/season";
 import type { UserInventoryPlant } from "../types/index";
 import type { AddPlantResult } from "../hooks/useUserInventory";
 import { promptUpgrade } from "../store/useUpgradePrompt";
@@ -145,7 +148,7 @@ function PlantSelectorContent({
             }`}
           >
           <div className="flex items-center gap-3">
-            <span className="text-3xl">{plant.img}</span>
+            <PlantIcon icon={plant.icon} emoji={plant.img} size={36} title={plant.name} />
 
             <div className="flex-1">
               <p className="font-medium text-stone-800">{plant.name}</p>
@@ -155,9 +158,22 @@ function PlantSelectorContent({
                 </p>
               )}
               <p className="text-xs text-stone-500 mt-0.5">
-                📐 {plant.cells_spacing} cel · 🔲 {plant.around_cells_spacing}{" "}
-                odmik
+                {[
+                  formatRealSpacing(plant.plant_spacing_cm, plant.row_spacing_cm),
+                  plant.transplant?.length || plant.sow_outdoors?.length
+                    ? `${plant.transplant?.length ? "sajenje" : "setev"} ${formatMonths(
+                        plant.transplant?.length ? plant.transplant : plant.sow_outdoors,
+                      )}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
+              {nowAction(plant) && (
+                <p className="text-[11px] text-green-700 font-semibold mt-0.5">
+                  🗓️ Ta mesec: {nowAction(plant)}
+                </p>
+              )}
               {inInventory && (
                 <p className="text-xs text-green-600 font-medium mt-0.5">
                   ✓ {entry!.quantity} v zalogah

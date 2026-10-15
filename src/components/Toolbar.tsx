@@ -1,21 +1,21 @@
-import { Menu, Move, Pencil, ShoppingBasket } from "lucide-react";
-
-type Mode = "pan" | "draw";
+import { Menu, ShoppingBasket, Undo2 } from "lucide-react";
 
 interface ToolbarProps {
-  mode: Mode;
   gardenName: string;
-  onModeChange: (mode: Mode) => void;
   onMenuOpen: () => void;
   onInventoryOpen: () => void;
+  canUndo: boolean;
+  undoLabel?: string;
+  onUndo: () => void;
 }
 
 export function Toolbar({
-  mode,
   gardenName,
-  onModeChange,
   onMenuOpen,
   onInventoryOpen,
+  canUndo,
+  undoLabel,
+  onUndo,
 }: ToolbarProps) {
   return (
     <div className="flex items-center gap-2 px-2 py-2 bg-white border-b border-gray-200 shadow-sm">
@@ -33,38 +33,24 @@ export function Toolbar({
         </span>
       </button>
 
-      {/* Desna stran - orodja */}
-      <div className="flex items-center gap-1.5 shrink-0">
+      {/* Desna stran - razveljavi in inventar */}
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          onClick={onUndo}
+          disabled={!canUndo}
+          className="p-2.5 rounded-lg text-gray-600 active:bg-gray-100 disabled:opacity-30 transition-opacity"
+          title={canUndo && undoLabel ? `Razveljavi: ${undoLabel}` : "Razveljavi"}
+          aria-label="Razveljavi"
+        >
+          <Undo2 size={21} />
+        </button>
         <button
           onClick={onInventoryOpen}
-          className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
+          className="p-2.5 rounded-lg text-gray-600 active:bg-gray-100"
           title="Moj inventar"
+          aria-label="Moj inventar"
         >
-          <ShoppingBasket size={20} />
-        </button>
-
-        <button
-          onClick={() => onModeChange("pan")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            mode === "pan"
-              ? "bg-green-500 text-white"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-          }`}
-        >
-          <Move size={15} />
-          Premikaj
-        </button>
-
-        <button
-          onClick={() => onModeChange("draw")}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            mode === "draw"
-              ? "bg-amber-400 text-white"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-          }`}
-        >
-          <Pencil size={15} />
-          Riši
+          <ShoppingBasket size={21} />
         </button>
       </div>
     </div>
