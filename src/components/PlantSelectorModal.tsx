@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Plus, Minus, Trash2, Sparkles } from "lucide-react";
+import { X, Plus, Minus, Trash2, Sparkles, AlertTriangle } from "lucide-react";
 import { usePlants } from "../hooks/usePlants";
 import type { UserInventoryPlant } from "../types/index";
 import type { AddPlantResult } from "../hooks/useUserInventory";
@@ -14,6 +14,7 @@ interface Props {
   // Omejitev paketa: inventar + posajeno na vrsto rastline (null = brez omejitve)
   maxPerPlant?: number | null;
   totalFor?: (plantId: string) => number;
+  planLabel?: string;
   onUpgrade?: () => void;
 }
 
@@ -26,12 +27,17 @@ export function PlantSelectorModal({
   embedded = false,
   maxPerPlant = null,
   totalFor = () => 0,
+  planLabel = "Free",
   onUpgrade,
 }: Props) {
   const { plants, loading } = usePlants();
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState("");
-  const [limitPlantId, setLimitPlantId] = useState<string | null>(null);
+  // Opozorilo pri rastlini po neuspešnem dodajanju (omejitev paketa ali napaka)
+  const [notice, setNotice] = useState<{
+    plantId: string;
+    kind: "limit" | "error";
+  } | null>(null);
 
   const getInventoryEntry = (plantId: string) =>
     inventory.find((i) => i.plant_id === plantId);
@@ -55,7 +61,7 @@ export function PlantSelectorModal({
 
   const handleAdd = async (plantId: string) => {
     const result = await onAdd(plantId, getQty(plantId));
-    setLimitPlantId(!result.ok && result.reason === "limit" ? plantId : null);
+    setNotice(result.ok ? null : { plantId, kind: result.reason });
   };
 
   const filteredPlants = plants.filter((plant) =>
@@ -68,6 +74,7 @@ export function PlantSelectorModal({
     if (open) {
       setQuantities({});
       setSearchQuery("");
+      setNotice(null);
     }
   }, [open]);
 
@@ -115,13 +122,21 @@ export function PlantSelectorModal({
         const inInventory = !!entry;
         const remaining = remainingFor(plant.id);
         const atLimit = remaining === 0;
+        const total = totalFor(plant.id);
+        const plantNotice = notice?.plantId === plant.id ? notice.kind : null;
+        const showLimitWarning = atLimit || plantNotice === "limit";
         return (
           <div
             key={plant.id}
-            className={`flex items-center gap-3 p-3 rounded-xl border bg-stone-50 transition-colors ${
-              inInventory ? "border-green-300 bg-green-50" : "border-stone-200"
+            className={`flex flex-col gap-2 p-3 rounded-xl border bg-stone-50 transition-colors ${
+              showLimitWarning
+                ? "border-amber-300"
+                : inInventory
+                  ? "border-green-300 bg-green-50"
+                  : "border-stone-200"
             }`}
           >
+          <div className="flex items-center gap-3">
             <span className="text-3xl">{plant.img}</span>
 
             <div className="flex-1">
@@ -142,18 +157,13 @@ export function PlantSelectorModal({
               )}
               {maxPerPlant != null && (
                 <p
-                  className={`text-xs mt-0.5 ${atLimit ? "text-amber-600 font-medium" : "text-stone-400"}`}
+                  className={`text-xs mt-0.5 ${showLimitWarning ? "text-amber-600 font-medium" : "text-stone-400"}`}
                 >
-                  {totalFor(plant.id)} / {maxPerPlant} (zaloga + posajeno)
+                  {total} / {maxPerPlant} (zaloga + posajeno)
+                  {remaining != null && remaining > 0 && remaining < maxPerPlant && (
+                    <span className="text-stone-400 font-normal"> · še {remaining}</span>
+                  )}
                 </p>
-              )}
-              {(atLimit || limitPlantId === plant.id) && onUpgrade && (
-                <button
-                  onClick={onUpgrade}
-                  className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700"
-                >
-                  <Sparkles size={12} /> Več s paketom Pro
-                </button>
               )}
             </div>
 
@@ -200,6 +210,40 @@ export function PlantSelectorModal({
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Opozorilo: omejitev paketa dosežena ali dodajanje ni uspelo */}
+          {showLimitWarning && maxPerPlant != null && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2"
+            >
+              <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0 text-xs text-amber-800">
+                <p className="font-semibold">
+                  Dosežena omejitev paketa {planLabel}
+                </p>
+                <p className="mt-0.5">
+                  Lahko imaš največ {maxPerPlant} rastlin te vrste (zaloga +
+                  posajeno). Zdaj jih imaš {total}
+                  {total > maxPerPlant ? ", zato novih ne moreš dodati" : ""}.
+                </p>
+                {onUpgrade && (
+                  <button
+                    onClick={onUpgrade}
+                    className="mt-1.5 inline-flex items-center gap-1 font-semibold text-amber-700"
+                  >
+                    <Sparkles size={12} /> Nadgradi na Pro za neomejeno
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          {plantNotice === "error" && (
+            <p role="alert" className="text-xs text-red-600 px-1">
+              Rastline ni bilo mogoče dodati. Preveri povezavo in poskusi znova.
+            </p>
+          )}
           </div>
         );
       })}
