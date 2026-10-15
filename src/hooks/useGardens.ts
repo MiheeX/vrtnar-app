@@ -61,6 +61,10 @@ export function useGardens(userId: string | null) {
         (g.beds as unknown as { count: number }[] | null)?.[0]?.count ?? 0,
     }));
     setGardens(list);
+    // Trenutni vrt je bil izbrisan (npr. na drugi napravi) → preklopi na prvega
+    setCurrentGardenId((cur) =>
+      cur && !list.some((g) => g.id === cur) ? (list[0]?.id ?? null) : cur,
+    );
     return list;
   }, [userId]);
 

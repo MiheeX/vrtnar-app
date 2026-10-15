@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 interface UserSettings {
@@ -15,18 +15,21 @@ export function useUserSettings(userId: string | null) {
   const [settings, setSettings] = useState<UserSettings>(DEFAULTS);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchSettings = useCallback(async () => {
     if (!userId) return;
-    supabase
+    const { data, error } = await supabase
       .from("user_settings")
       .select("show_sub_grid, allow_bad_neighbor_drop")
       .eq("user_id", userId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) setSettings(data);
-        setLoading(false);
-      });
+      .maybeSingle();
+    if (error) console.error("useUserSettings error:", error);
+    if (data) setSettings(data);
+    setLoading(false);
   }, [userId]);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   const updateSetting = async <K extends keyof UserSettings>(
     key: K,
@@ -40,5 +43,5 @@ export function useUserSettings(userId: string | null) {
       .upsert({ user_id: userId, [key]: value }, { onConflict: "user_id" });
   };
 
-  return { settings, loading, updateSetting };
+  return { settings, loading, updateSetting, refresh: fetchSettings };
 }
