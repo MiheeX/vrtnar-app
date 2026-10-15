@@ -7,6 +7,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -42,6 +43,27 @@ function LoginPage() {
     setLoading(false);
   };
 
+  const handleForgotPassword = async () => {
+    setError(null);
+    setInfo(null);
+    if (!email) {
+      setError("Vpiši email, na katerega pošljemo povezavo za ponastavitev gesla.");
+      return;
+    }
+    setLoading(true);
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (error) {
+      setError(error.message);
+    } else {
+      setInfo("Če račun obstaja, smo na email poslali povezavo za ponastavitev gesla.");
+    }
+    setLoading(false);
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-green-50 p-4">
       <div className="bg-white rounded-2xl shadow-md p-8 w-full max-w-sm">
@@ -66,6 +88,7 @@ function LoginPage() {
           />
 
           {error && <p className="text-sm text-red-500 text-center">{error}</p>}
+          {info && <p className="text-sm text-green-700 text-center">{info}</p>}
 
           <button
             onClick={handleLogin}
@@ -81,6 +104,15 @@ function LoginPage() {
             className="border border-green-600 text-green-600 rounded-lg p-3 font-semibold hover:bg-green-50 disabled:opacity-50"
           >
             Registracija
+          </button>
+
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            disabled={loading}
+            className="text-sm text-green-700 hover:underline disabled:opacity-50"
+          >
+            Pozabljeno geslo?
           </button>
         </form>
       </div>

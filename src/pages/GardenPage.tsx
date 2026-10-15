@@ -6,13 +6,18 @@ import type { GardenBed } from "../types/garden";
 import { Toolbar } from "../components/Toolbar";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useUserInventory } from "../hooks/useUserInventory";
-//import { PlantSelectorModal } from "../components/PlantSelectorModal";
-import { useGarden } from "../hooks/useGarden";
+import { useGardens } from "../hooks/useGardens";
+import { SideMenu } from "../components/SideMenu";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { InventoryModal } from "../components/InventoryModal";
 import { PlantPickerModal } from "../components/PlantPickerModal";
 import { useBedPlants } from "../hooks/useBedPlants";
-import { SettingsModal } from "../components/SettingsModal";
+import { PlantSelectorModal } from "../components/PlantSelectorModal";
+import type { PlantNeighbor } from "../types";
+import { useUserSettings } from "../hooks/useUserSettings";
+import { PlantSheet } from "../components/PlantSheet";
+import type { SheetSnap } from "../components/PlantSheet";
 
 const GardenPage: React.FC = () => {
   const {
@@ -24,24 +29,43 @@ const GardenPage: React.FC = () => {
     removeBed,
     updateBed,
   } = useGardenStore();
+
   const selectedBed = beds.find((b) => b.id === selectedBedId) ?? null;
   const [editName, setEditName] = useState("");
   const canvasRef = useRef<GardenCanvasHandle>(null); // ← ref na canvas
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [addPlantsOpen, setAddPlantsOpen] = useState(false);
 
   const { userId } = useCurrentUser();
   //const { inventory, addPlant, removePlant, decrementPlant, consumePlant } =
   //  useUserInventory(userId ?? "");
 
+  const { settings, updateSetting } = useUserSettings(userId);
+
   const { inventory, addPlant, removePlant, decrementPlant, consumePlant } =
     useUserInventory(userId ?? "");
 
-  const { gardenId } = useGarden(userId);
+  const gardensApi = useGardens(userId);
+  const gardenId = gardensApi.currentGardenId;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const navigate = useNavigate();
+  const {
+    bedPlants,
+    refresh: refreshBedPlants,
+    applyOptimisticUpdate,
+  } = useBedPlants(gardenId ?? "");
 
   const handleBedSelect = (bed: GardenBed) => {
     selectBed(bed.id);
     setEditName(bed.name);
+    setQuickInfoTargetId(null);
   };
+
+  //quick info
+  const [quickInfoTargetId, setQuickInfoTargetId] = useState<string | null>(
+    null,
+  );
+  const quickInfoTarget =
+    bedPlants.find((b) => String(b.id) === String(quickInfoTargetId)) ?? null;
 
   const [inventoryOpen, setInventoryOpen] = useState(false);
 
@@ -51,19 +75,45 @@ const GardenPage: React.FC = () => {
     cellX: number;
     cellY: number;
   } | null>(null);
+  // Položaj plant sheeta: mali povzetek ali podrobnosti
+  const [sheetSnap, setSheetSnap] = useState<SheetSnap>("peek");
 
-  const { bedPlants, refresh: refreshBedPlants } = useBedPlants(gardenId ?? "");
+  const [plantNeighbors, setPlantNeighbors] = useState<PlantNeighbor[]>([]);
+
+  const showSubGrid = settings.show_sub_grid;
+  const allowBadNeighborDrop = settings.allow_bad_neighbor_drop;
+  const [confirmDeleteBed, setConfirmDeleteBed] = useState(false);
+
 
   useEffect(() => {
-    const fetchBeds = async () => {
-      const { data } = await supabase
-        .from("beds")
-        .select("*")
-        .eq("garden_id", gardenId);
-      if (data) useGardenStore.setState({ beds: data });
+    supabase
+      .from("plant_neighbors")
+      .select("*")
+      .then(({ data }) => {
+        if (data) setPlantNeighbors(data);
+      });
+  }, []);
+
+  // Ob menjavi vrta počisti stanje prejšnjega in naloži njegove gredice
+  useEffect(() => {
+    if (!gardenId) return;
+    let cancelled = false;
+    canvasRef.current?.reset();
+    selectBed(null);
+    setQuickInfoTargetId(null);
+    useGardenStore.setState({ beds: [] });
+    supabase
+      .from("beds")
+      .select("*")
+      .eq("garden_id", gardenId)
+      .then(({ data, error }) => {
+        if (error) console.error("Napaka pri nalaganju gredic:", error);
+        if (!cancelled && data) useGardenStore.setState({ beds: data });
+      });
+    return () => {
+      cancelled = true;
     };
-    fetchBeds();
-  }, [gardenId]);
+  }, [gardenId, selectBed]);
 
   return (
     <div className="flex flex-col h-screen bg-stone-50 select-none">
@@ -78,10 +128,40 @@ const GardenPage: React.FC = () => {
             canvasRef.current?.reset();
             setMode(m);
           }}
-          onSettingsOpen={() => setSettingsOpen(true)}
+          gardenName={gardensApi.currentGarden?.name ?? "Moj vrt"}
+          onMenuOpen={() => {
+            gardensApi.refresh(); // sveže število gredic
+            setMenuOpen(true);
+          }}
           onInventoryOpen={() => setInventoryOpen(true)}
         />
       </div>
+
+      <SideMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        gardens={gardensApi.gardens}
+        currentGardenId={gardenId}
+        plan={gardensApi.plan}
+        maxGardens={gardensApi.maxGardens}
+        atLimit={gardensApi.atLimit}
+        onSelectGarden={gardensApi.selectGarden}
+        onCreateGarden={gardensApi.createGarden}
+        onRenameGarden={gardensApi.renameGarden}
+        onDeleteGarden={gardensApi.deleteGarden}
+        onAddPlants={() => setAddPlantsOpen(true)}
+        showSubGrid={showSubGrid}
+        onToggleSubGrid={() => updateSetting("show_sub_grid", !showSubGrid)}
+        allowBadNeighborDrop={allowBadNeighborDrop}
+        onToggleAllowBadNeighborDrop={() =>
+          updateSetting("allow_bad_neighbor_drop", !allowBadNeighborDrop)
+        }
+        onSignOut={async () => {
+          const { error } = await supabase.auth.signOut();
+          if (error) console.error("Napaka pri odjavi:", error);
+          navigate("/login", { replace: true });
+        }}
+      />
 
       {/* Mode hint */}
       <div
@@ -101,6 +181,7 @@ const GardenPage: React.FC = () => {
       {/* Canvas */}
       <div className="flex-1 overflow-hidden relative">
         <GardenCanvas
+          showSubGrid={showSubGrid}
           ref={canvasRef}
           onBedSelect={handleBedSelect}
           onPlantCell={(bedId, cellX, cellY) => {
@@ -112,8 +193,34 @@ const GardenPage: React.FC = () => {
           userId={userId ?? ""}
           gardenId={gardenId ?? ""}
           onReturnToInventory={(plantId) => addPlant(plantId, 1)}
+          plantNeighbors={plantNeighbors}
+          allowBadNeighborDrop={allowBadNeighborDrop}
+          onPlantInfo={(bedPlantId) => {
+            setQuickInfoTargetId(bedPlantId);
+            setSheetSnap("full");
+          }}
+          onPlantQuickInfo={(bedPlantId) => {
+            setQuickInfoTargetId(bedPlantId);
+            setSheetSnap("peek");
+          }}
+          onCloseBedPanel={() => selectBed(null)}
+          activeQuickInfoId={quickInfoTargetId}
         />
       </div>
+
+      <PlantSheet
+        bedPlant={quickInfoTarget}
+        snap={sheetSnap}
+        onSnapChange={setSheetSnap}
+        onClose={() => setQuickInfoTargetId(null)}
+        plantNeighbors={plantNeighbors}
+        allBedPlants={bedPlants}
+        onUpdated={refreshBedPlants}
+        onOptimisticUpdate={(field, value) => {
+          if (quickInfoTargetId)
+            applyOptimisticUpdate(quickInfoTargetId, { [field]: value });
+        }}
+      />
 
       {/* Info panel — pan mode, bed selected */}
       {mode === "pan" && selectedBed && (
@@ -149,18 +256,7 @@ const GardenPage: React.FC = () => {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={async () => {
-                const { error } = await supabase
-                  .from("beds")
-                  .delete()
-                  .eq("id", selectedBed.id);
-                if (error) {
-                  console.error("Delete error:", error);
-                  return; // ← ta return mora biti tukaj!
-                }
-                removeBed(selectedBed.id);
-                selectBed(null);
-              }}
+              onClick={() => setConfirmDeleteBed(true)}
               className="flex-1 py-2 rounded-xl bg-red-50 text-red-600 font-medium text-sm"
             >
               🗑️ Izbriši gredico
@@ -176,20 +272,10 @@ const GardenPage: React.FC = () => {
         onRemove={removePlant}
         onDecrement={decrementPlant}
       />
-      {/* Settings modal */}
-      {/*
+      {/* Katalog rastlin — dodajanje v inventar (iz menija) */}
       <PlantSelectorModal
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        inventory={inventory}
-        onAdd={addPlant}
-        onRemove={removePlant}
-      />
-      */}
-
-      <SettingsModal
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        open={addPlantsOpen}
+        onClose={() => setAddPlantsOpen(false)}
         inventory={inventory}
         onAdd={addPlant}
         onRemove={removePlant}
@@ -208,7 +294,52 @@ const GardenPage: React.FC = () => {
           onConsumeFromInventory={(plantId) => consumePlant(plantId, 1)}
           userId={userId ?? ""}
           gardenId={gardenId ?? ""}
+          plantNeighbors={plantNeighbors}
         />
+      )}
+
+      {/* Confirm delete*/}
+      {confirmDeleteBed && selectedBed && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
+          <div className="bg-white rounded-2xl p-6 shadow-xl mx-4 w-full max-w-xs text-center flex flex-col gap-4">
+            <p className="text-base font-semibold text-stone-800">
+              🗑️ Izbriši gredico?
+            </p>
+            <p className="text-sm text-stone-500">
+              Vse posajene rastline bodo odstranjene.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmDeleteBed(false)}
+                className="flex-1 py-2 rounded-xl border border-stone-200 text-sm text-stone-600 hover:bg-stone-50"
+              >
+                Prekliči
+              </button>
+              <button
+                onClick={async () => {
+                  const { error } = await supabase
+                    .from("beds")
+                    .delete()
+                    .eq("id", selectedBed.id);
+                  if (error) {
+                    console.error("Delete error:", error);
+                    return;
+                  }
+                  removeBed(selectedBed.id);
+                  selectBed(null);
+                  setConfirmDeleteBed(false);
+                }}
+                className="flex-1 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
+              >
+                Izbriši
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -20,6 +20,9 @@ node_modules
 .env*.local
 data.txt
 
+# Claude Code — osebne nastavitve
+.claude/settings.local.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
