@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Carrot,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -39,6 +40,8 @@ interface Props {
   onRenameGarden: (id: string, name: string) => void;
   onDeleteGarden: (id: string) => Promise<boolean>;
   onAddPlants: () => void;
+  harvestCount: number;
+  onOpenHarvest: () => void;
   showSubGrid: boolean;
   onToggleSubGrid: () => void;
   allowBadNeighborDrop: boolean;
@@ -100,6 +103,8 @@ export function SideMenu({
   onRenameGarden,
   onDeleteGarden,
   onAddPlants,
+  harvestCount,
+  onOpenHarvest,
   showSubGrid,
   onToggleSubGrid,
   allowBadNeighborDrop,
@@ -288,6 +293,22 @@ export function SideMenu({
       >
         <Plus size={20} className="text-stone-500 shrink-0" />
         <span className="flex-1 text-[15px] text-stone-800">Dodaj rastline</span>
+      </button>
+
+      <button
+        onClick={() => {
+          onClose();
+          onOpenHarvest();
+        }}
+        className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left active:bg-stone-100"
+      >
+        <Carrot size={20} className="text-orange-500 shrink-0" />
+        <span className="flex-1 text-[15px] text-stone-800">Za pobiranje</span>
+        {harvestCount > 0 && (
+          <span className="shrink-0 min-w-[22px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold text-center">
+            {harvestCount}
+          </span>
+        )}
       </button>
 
       <button

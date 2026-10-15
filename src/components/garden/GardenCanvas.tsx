@@ -17,6 +17,8 @@ import { formatBedSize } from "../../lib/units";
 import { notify, pushUndo } from "../../store/useUndo";
 import type { DragWarning } from "../StatusArea";
 import { PlantIcon } from "../PlantIcon";
+import type { HarvestInfo, HarvestStatus } from "../../lib/harvest";
+import { ShoppingBasket } from "lucide-react";
 import {
   anchorFor,
   buildRelations,
@@ -35,6 +37,9 @@ export const ROWS = 20;
 const MIN_CELLS = 1;
 const LONG_PRESS_MS = 250; // hitro zaporedno premikanje rastlin; obroček + vibracija potrdita
 const TAP_SLOP = 10; // px — večji premik ni več tap
+
+// Pogled "Pobiranje": značka na ikoni rastline (zrelo = košarica, prezrelo = klicaj)
+const HARVEST_BADGE = { ready: "#16a34a", overdue: "#d97706" } as const;
 const HANDLE_HIT = 22; // px na zaslonu (skupaj 44 px dotik)
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 2.5;
@@ -63,12 +68,16 @@ interface Props {
   onPlantsChanged: () => void;
   // Opozorilo med vlečenjem rastline (slab sosed / preblizu) za statusno območje
   onDragWarning?: (warning: DragWarning | null) => void;
+  // Pogled "Pobiranje": zrelost po id rastline (null = pogled izklopljen)
+  harvest?: Record<string, HarvestInfo> | null;
 }
 
 export interface GardenCanvasHandle {
   reset: () => void;
   // Celica na sredini trenutnega pogleda (za novo gredico)
   viewportCenterCell: () => { col: number; row: number };
+  // Premakni pogled, da je rastlina na sredini (seznam za pobiranje)
+  focusPlant: (bedPlantId: string) => void;
 }
 
 type Target =
@@ -146,6 +155,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       onRemovePlant,
       onPlantsChanged,
       onDragWarning,
+      harvest = null,
     },
     ref,
   ) => {
@@ -242,6 +252,20 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           col: clamp(Math.floor((sx - p.x) / z / CELL), 0, COLS - 1),
           row: clamp(Math.floor((sy - p.y) / z / CELL), 0, ROWS - 1),
         };
+      },
+      focusPlant: (bedPlantId) => {
+        const bp = bedPlantsRef.current.find((b) => b.id === bedPlantId);
+        const bed = bp && useGardenStore.getState().beds.find((b) => b.id === bp.bed_id);
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (!bp || !bed || !rect) return;
+        const z = Math.max(zoomRef.current, 1);
+        const half = ((bp.plant?.cells_spacing ?? 1) * SUBCELL) / 2;
+        const cx = bed.x * CELL + bp.cell_x * SUBCELL + half;
+        const cy = bed.y * CELL + bp.cell_y * SUBCELL + half;
+        zoomRef.current = z;
+        setZoom(z);
+        // rastlina malo nad sredino — spodaj je list z informacijami
+        applyPan({ x: rect.width / 2 - cx * z, y: rect.height * 0.35 - cy * z });
       },
     }));
 
@@ -981,6 +1005,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                     const y = dragged ? plantDrag!.cellY : override ? override.cellY : bp.cell_y - shiftY;
                     const status = dragged ? plantDrag!.result.status : null;
                     const active = activeQuickInfoId === bp.id;
+                    // Pogled "Pobiranje": zrele na belem krogu z značko, ostale zbledijo
+                    const ripe: HarvestStatus | "none" | null =
+                      harvest && !dragged ? (harvest[bp.id] as HarvestInfo | undefined)?.status ?? "none" : null;
                     return (
                       <div
                         key={bp.id}
@@ -1012,6 +1039,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                             border: active
                               ? "2px solid rgba(34,197,94,0.85)"
                               : "1px solid rgba(34,197,94,0.25)",
+                            opacity: ripe === "none" ? 0.5 : 1,
                           }}
                         />
                         <div
@@ -1025,15 +1053,48 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                             alignItems: "center",
                             justifyContent: "center",
                             transform: dragged ? "scale(1.25)" : "none",
-                            filter: dragged ? "drop-shadow(0 3px 6px rgba(0,0,0,0.3))" : "none",
+                            filter: dragged
+                              ? "drop-shadow(0 3px 6px rgba(0,0,0,0.3))"
+                              : ripe === "none"
+                                ? "grayscale(0.8)"
+                                : "none",
+                            opacity: ripe === "none" ? 0.35 : 1,
+                            borderRadius: "50%",
+                            backgroundColor: ripe && ripe !== "none" ? "white" : "transparent",
+                            border: ripe === "soon" ? "1.5px dashed #16a34a" : "none",
+                            boxSizing: "border-box",
                           }}
                         >
                           <PlantIcon
                             icon={bp.plant?.icon}
                             emoji={bp.plant?.img}
-                            size={19}
+                            size={ripe && ripe !== "none" ? 17 : 19}
                             title={bp.plant?.name}
                           />
+                          {(ripe === "ready" || ripe === "overdue") && (
+                            <span
+                              style={{
+                                position: "absolute",
+                                top: -6,
+                                right: -7,
+                                width: 14,
+                                height: 14,
+                                borderRadius: "50%",
+                                backgroundColor: HARVEST_BADGE[ripe],
+                                border: "1.5px solid white",
+                                color: "white",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: 9,
+                                fontWeight: 800,
+                                lineHeight: 1,
+                                boxSizing: "border-box",
+                              }}
+                            >
+                              {ripe === "ready" ? <ShoppingBasket size={8} strokeWidth={3} /> : "!"}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );

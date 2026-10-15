@@ -44,6 +44,7 @@ export interface Plant {
   germination_days_min: number | null;
   germination_days_max: number | null;
   germination_temp_min_c: number | null; // najnižja temperatura tal za kalitev
+  continuous_harvest: boolean; // pobiranje do konca sezone; days_to_harvest = prvo pobiranje
   created_at: string;
 }
 

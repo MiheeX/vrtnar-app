@@ -19,6 +19,24 @@ Načrtovanje, ki ga uporabnik uporabi, še preden kaj posadi — za nakup sadik/
 - Potrebno: lokacija vrta (za vreme), push obvestila (web push / PWA), nastavitve obvestil v `user_settings`.
 - Free / Pro: odloči ob načrtovanju (npr. osnovni seznam opravil Free, vremenska in push obvestila Pro).
 
+## Zaklep premikanja posajenih rastlin
+
+Posajene rastline se v resnici ne prestavljajo — po določenem času naj se na platnu zaklenejo (preprečimo nenamerno premikanje).
+
+- **Nastavitev »Zakleni premikanje rastlin«** (vklop/izklop) in pod njo **»po koliko dneh«** (npr. privzeto 30) — prikaže se samo, ko je nastavitev vklopljena.
+- Shrani v `user_settings` (npr. `lock_plants_enabled boolean`, `lock_plants_after_days smallint`) — nastavitev računa, ne naprave.
+- Zaklenjena rastlina: dolg pritisk je ne začne vleči, ampak pokaže obvestilo (»Rastlina je posajena že 45 dni — premikanje je zaklenjeno«) z možnostjo odklepa v nastavitvah; meni (info / odstrani) še vedno deluje.
+- Starost iz `planted_at`; rastline brez datuma se ne zaklenejo.
+- Premik celotne gredice: odloči, ali je dovoljen tudi z zaklenjenimi rastlinami.
+- Free / Pro: verjetno Free (osnovna zaščita pred napakami).
+
+## Prilagodljiv list rastline
+
+- V Nastavitvah vklop/izklop, **kateri podatki se prikažejo v podrobnostih rastline** (npr. zalivanje, podatki sajenja, opombe, sosedje, o rastlini — sonce/voda/razmik/globina/vznik, setveni koledar, pobiranje, viri).
+- Shrani v `user_settings` (npr. `plant_sheet_sections jsonb` s seznamom vidnih razdelkov) — velja za račun.
+- Privzeto vse vklopljeno; morda tudi vrstni red razdelkov.
+- Free / Pro: odloči ob načrtovanju.
+
 ---
 
 # Pehta (kasneje — po Vrtnarju)

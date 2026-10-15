@@ -40,10 +40,11 @@ export interface BedPlantPlant {
   germination_days_min?: number | null;
   germination_days_max?: number | null;
   germination_temp_min_c?: number | null;
+  continuous_harvest?: boolean;
 }
 
 const PLANT_FIELDS =
-  "id, name, img, icon, cells_spacing, around_cells_spacing, family, description, water_need, sun_need, watering_interval_days, days_to_harvest_min, days_to_harvest_max, sow_indoors, sow_outdoors, transplant, harvest, row_spacing_cm, plant_spacing_cm, sow_depth_cm, germination_days_min, germination_days_max, germination_temp_min_c";
+  "id, name, img, icon, cells_spacing, around_cells_spacing, family, description, water_need, sun_need, watering_interval_days, days_to_harvest_min, days_to_harvest_max, sow_indoors, sow_outdoors, transplant, harvest, row_spacing_cm, plant_spacing_cm, sow_depth_cm, germination_days_min, germination_days_max, germination_temp_min_c, continuous_harvest";
 
 export function useBedPlants(gardenId: string) {
   const [bedPlants, setBedPlants] = useState<BedPlant[]>([]);
