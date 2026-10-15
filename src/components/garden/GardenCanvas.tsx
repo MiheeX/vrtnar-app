@@ -18,6 +18,8 @@ const COLS = 20;
 const ROWS = 20;
 const MIN_CELLS = 1;
 const LONG_PRESS_MS = 200;
+// Največji premik prsta (px), ki še šteje kot tap
+const TAP_SLOP = 10;
 
 interface Props {
   onBedSelect: (bed: GardenBed) => void;
@@ -136,6 +138,14 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const pendingDrawStart = useRef<{ col: number; row: number } | null>(null);
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Dotik, ki se je začel na rastlini (za tap in da canvas ne odpre context menija)
+    const plantPressRef = useRef<{ startX: number; startY: number } | null>(
+      null,
+    );
+    // Po vlečenju rastline z miško ignoriraj naslednji click (ne odpri quick info)
+    const suppressPlantClickRef = useRef(false);
+    // Isti drop lahko pride iz canvas handlerja in iz window listenerja — shrani samo enkrat
+    const lastCommittedDropRef = useRef<object | null>(null);
     const [isSpaceCollision, setIsSpaceCollision] = useState(false);
     const [isAroundCollision, setIsAroundCollision] = useState(false);
     const [confirmDeleteBedId, setConfirmDeleteBedId] = useState<string | null>(
@@ -361,9 +371,19 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     // Začne vlečenje rastline — nastavi interaction state in resetira validacijo
     const startPlantDrag = useCallback(
-      (bp: BedPlant) => {
+      (bp: BedPlant, clientX: number, clientY: number) => {
         const bed = beds.find((b) => b.id === bp.bed_id);
         if (!bed) return;
+
+        // Zapomni si, kje znotraj kvadranta smo prijeli (v canvas px),
+        // da rastlina ne skoči pod prst/kurzor
+        const rect = containerRef.current!.getBoundingClientRect();
+        const canvasX = (clientX - rect.left - panRef.current.x) / zoomRef.current;
+        const canvasY = (clientY - rect.top - panRef.current.y) / zoomRef.current;
+        const grabOffsetX = canvasX - (bed.x * CELL + bp.cell_x * SUBCELL);
+        const grabOffsetY = canvasY - (bed.y * CELL + bp.cell_y * SUBCELL);
+
+        suppressPlantClickRef.current = true;
         setContextMenu(null);
         setDragTooltip(null);
         setIsBadDrop(false);
@@ -376,8 +396,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           bedId: bp.bed_id,
           cellX: bp.cell_x,
           cellY: bp.cell_y,
-          grabOffsetX: 0,
-          grabOffsetY: 0,
+          grabOffsetX,
+          grabOffsetY,
         });
 
         if (hoverTimer.current) clearTimeout(hoverTimer.current);
@@ -565,15 +585,21 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         const p = panRef.current;
         const canvasX = (clientX - rect.left - p.x) / z;
         const canvasY = (clientY - rect.top - p.y) / z;
+        const draggingBp = bedPlantsRef.current.find(
+          (bp) => bp.id === state.bedPlantId,
+        );
+        const spacing = draggingBp?.plant?.cells_spacing ?? 1;
+        // Levi zgornji kot rastline = kazalec - offset prijema, zaokroženo na sub-celico.
+        // Omejeno tako, da cel kvadrant ostane znotraj gredice (rastlina se ustavi ob robu).
         const newCellX = clamp(
-          Math.floor((canvasX - bed.x * CELL) / SUBCELL),
+          Math.round((canvasX - state.grabOffsetX - bed.x * CELL) / SUBCELL),
           0,
-          bed.width * 2 - 1,
+          Math.max(0, bed.width * 2 - spacing),
         );
         const newCellY = clamp(
-          Math.floor((canvasY - bed.y * CELL) / SUBCELL),
+          Math.round((canvasY - state.grabOffsetY - bed.y * CELL) / SUBCELL),
           0,
-          bed.height * 2 - 1,
+          Math.max(0, bed.height * 2 - spacing),
         );
 
         setDraggingPlantPos({ cellX: newCellX, cellY: newCellY });
@@ -586,13 +612,9 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           newCellY,
         );
 
-        //check out of bounds
-        const draggingBp = bedPlantsRef.current.find(
-          (bp) => bp.id === state.bedPlantId,
-        );
-        const spacing = draggingBp?.plant?.cells_spacing ?? 1;
-        const maxSubCellX = bed ? bed.width * 2 : 0;
-        const maxSubCellY = bed ? bed.height * 2 : 0;
+        //check out of bounds (rastlina večja od gredice)
+        const maxSubCellX = bed.width * 2;
+        const maxSubCellY = bed.height * 2;
         const isOutOfBounds =
           newCellX < 0 ||
           newCellY < 0 ||
@@ -672,11 +694,15 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     // Zaključi premik rastline — shrani v Supabase ali vrne na prvotno mesto
     const commitPlantDrop = useCallback(
       async (state: Extract<InteractionState, { type: "movingPlant" }>) => {
+        if (lastCommittedDropRef.current === state) return;
+        lastCommittedDropRef.current = state;
+
         setDragTooltip(null);
         setInteraction({ type: "idle" });
         setDraggingPlantPos(null);
         setIsSpaceCollision(false);
         setIsAroundCollision(false);
+        setIsBadDrop(false);
 
         // Preveri svež isBadDrop — če je slab sosed ali prostor zaseden
         const hasSpaceCollision = checkSpaceCollision(
@@ -702,17 +728,20 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
         if (isOutOfBounds || hasSpaceCollision) return;
 
+        // Rastlina je ostala na istem mestu — nič za shraniti
+        if (
+          draggingBp &&
+          draggingBp.cell_x === state.cellX &&
+          draggingBp.cell_y === state.cellY
+        )
+          return;
+
         const { isBad } = getBadNeighborInfo(
           state.bedPlantId,
           state.bedId,
           state.cellX,
           state.cellY,
         );
-
-        setIsBadDrop(false);
-
-        // Space collision vedno blokira — ne glede na setting
-        if (hasSpaceCollision) return;
 
         // Bad neighbor blokira samo če setting ni vklopljen
         if (isBad && !allowBadNeighborDrop) return;
@@ -764,6 +793,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       (e: React.TouchEvent) => {
         if (e.touches.length === 2) {
           clearLongPress();
+          plantPressRef.current = null; // pinch ni tap na rastlino
           pendingDrawStart.current = null;
           if (interaction.type === "drawing") setInteraction({ type: "idle" });
           const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -863,7 +893,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           setContextMenu(null);
         }
 
-        if (e.touches.length === 1 && mode === "pan") {
+        // Dotik na rastlini ima svoj long press (vlečenje rastline), zato tu ne odpremo menija
+        if (e.touches.length === 1 && mode === "pan" && !plantPressRef.current) {
           const touch = e.touches[0];
           longPressTimer.current = setTimeout(() => {
             openContextMenu(touch.clientX, touch.clientY);
@@ -1013,6 +1044,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const onTouchEnd = useCallback(
       (e: React.TouchEvent) => {
         clearLongPress();
+        if (e.touches.length === 0) plantPressRef.current = null;
         pendingDrawStart.current = null;
         // Pinch reset šele ko sta DVA prsta dvignjena (touches.length === 0)
         // touchend se sproži tudi pri prvem prstu med pinchom — ne resetiramo prezgodaj
@@ -1604,8 +1636,81 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                         pointerEvents: "none",
                       }}
                     >
-                      {/* Zasedeno območje */}
+                      {/* Zasedeno območje — klikabilno za cel spacing kvadrant */}
                       <div
+                        onMouseDown={(e) => {
+                          if (e.button !== 0 || mode !== "pan") return;
+                          e.stopPropagation();
+                          suppressPlantClickRef.current = false;
+                          if (contextMenu) setContextMenu(null);
+                          const { clientX, clientY } = e;
+                          longPressTimer.current = setTimeout(() => {
+                            startPlantDrag(bp, clientX, clientY);
+                          }, LONG_PRESS_MS);
+                        }}
+                        onMouseUp={(e) => {
+                          if (interaction.type !== "movingPlant") {
+                            clearLongPress();
+                            e.stopPropagation();
+                          }
+                        }}
+                        // Touch se NE ustavi tukaj: canvas začne panning/pinch kot povsod,
+                        // rastlina doda le long press (vlečenje) in tap (quick info)
+                        onTouchStart={(e) => {
+                          if (mode !== "pan" || e.touches.length !== 1) return;
+                          if (contextMenu) setContextMenu(null);
+                          clearLongPress();
+                          const { clientX, clientY } = e.touches[0];
+                          plantPressRef.current = {
+                            startX: clientX,
+                            startY: clientY,
+                          };
+                          longPressTimer.current = setTimeout(
+                            () => startPlantDrag(bp, clientX, clientY),
+                            LONG_PRESS_MS,
+                          );
+                        }}
+                        onTouchEnd={(e) => {
+                          const press = plantPressRef.current;
+                          if (interaction.type === "movingPlant" || !press)
+                            return;
+                          const t = e.changedTouches[0];
+                          // Swipe ni tap — samo panning, brez quick info
+                          if (
+                            Math.hypot(
+                              t.clientX - press.startX,
+                              t.clientY - press.startY,
+                            ) > TAP_SLOP
+                          )
+                            return;
+                          clearLongPress();
+                          // Prepreči sintetični click, sicer se quick info odpre dvakrat
+                          e.preventDefault();
+                          onCloseBedPanel?.();
+                          onPlantQuickInfo(bp.id);
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (suppressPlantClickRef.current) {
+                            suppressPlantClickRef.current = false;
+                            return;
+                          }
+                          if (interaction.type === "movingPlant") return;
+                          onPlantQuickInfo(bp.id);
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          openContextMenu(e.clientX, e.clientY, {
+                            plantId: bp.id,
+                          });
+                        }}
+                        onMouseLeave={() => {
+                          if (hoverTimer.current)
+                            clearTimeout(hoverTimer.current);
+                          hoverTimer.current = null;
+                          setHoverTooltip(null);
+                        }}
                         style={{
                           position: "absolute",
                           left: displayX * SUBCELL,
@@ -1631,53 +1736,13 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                               ? "2px solid rgba(34,197,94,0.8)" // ← bolden border
                               : "1px solid rgba(34,197,94,0.2)",
                           borderRadius: 3,
-                          pointerEvents: "none",
+                          pointerEvents: "auto",
+                          cursor: isBeingDragged ? "grabbing" : "grab",
+                          zIndex: isBeingDragged ? 11 : 4,
                         }}
                       />
                       {/* Ikona rastline */}
                       <div
-                        onMouseDown={(e) => {
-                          if (e.button !== 0 || mode !== "pan") return;
-                          e.stopPropagation();
-                          if (contextMenu) {
-                            setContextMenu(null);
-                            //return;
-                          }
-                          longPressTimer.current = setTimeout(() => {
-                            startPlantDrag(bp);
-                          }, LONG_PRESS_MS);
-                        }}
-                        onMouseUp={(e) => {
-                          if (interaction.type !== "movingPlant") {
-                            clearLongPress();
-                            e.stopPropagation();
-                          }
-                        }}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          openContextMenu(e.clientX, e.clientY, {
-                            plantId: bp.id,
-                          });
-                        }}
-                        onTouchStart={(e) => {
-                          e.stopPropagation();
-                          if (mode !== "pan") return;
-                          if (contextMenu) setContextMenu(null);
-                          clearLongPress();
-                          longPressTimer.current = setTimeout(
-                            () => startPlantDrag(bp),
-                            LONG_PRESS_MS,
-                          );
-                        }}
-                        onTouchEnd={(e) => {
-                          if (interaction.type !== "movingPlant") {
-                            clearLongPress();
-                            e.stopPropagation();
-                            onCloseBedPanel?.();
-                            onPlantQuickInfo(bp.id);
-                          }
-                        }}
                         /*
                         onMouseEnter={(e) => {
                           if (interaction.type === "movingPlant") return;
@@ -1715,17 +1780,6 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           }, 500);
                         }}
                         */
-                        onMouseLeave={() => {
-                          if (hoverTimer.current)
-                            clearTimeout(hoverTimer.current);
-                          hoverTimer.current = null;
-                          setHoverTooltip(null);
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation(); // prepreči da klik pride do gredice
-                          if (interaction.type === "movingPlant") return; // ne odpri če smo vlekli
-                          onPlantQuickInfo(bp.id);
-                        }}
                         style={{
                           position: "absolute",
                           left: displayX * SUBCELL,
@@ -1736,9 +1790,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                           alignItems: "center",
                           justifyContent: "center",
                           fontSize: 14,
-                          pointerEvents: "auto",
-                          zIndex: isBeingDragged ? 11 : 5,
-                          cursor: isBeingDragged ? "grabbing" : "grab",
+                          pointerEvents: "none",
+                          zIndex: isBeingDragged ? 12 : 5,
                           filter: isBeingDragged
                             ? isBadDrop
                               ? "drop-shadow(0 2px 8px rgba(220,38,38,0.5))"
