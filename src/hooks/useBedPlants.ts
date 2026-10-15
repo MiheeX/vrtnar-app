@@ -81,10 +81,17 @@ export function useBedPlants(gardenId: string) {
 
   const refresh = () => fetch();
 
+  // Takojšnja lokalna sprememba pred odgovorom baze (hitro sajenje/odstranjevanje)
+  const addLocal = (row: BedPlant) => setBedPlants((prev) => [...prev, row]);
+  const removeLocal = (id: string) =>
+    setBedPlants((prev) => prev.filter((bp) => bp.id !== id));
+
   return {
     bedPlants: mergedBedPlants,
     loading,
     refresh,
     applyOptimisticUpdate,
+    addLocal,
+    removeLocal,
   };
 }

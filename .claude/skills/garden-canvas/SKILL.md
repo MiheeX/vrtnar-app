@@ -1,60 +1,50 @@
 ---
 name: garden-canvas
-description: How GardenCanvas.tsx works — coordinate system, interaction state machine, plant collision/neighbor rules, touch handling. Use before changing anything about drawing, moving or resizing beds, dragging plants, zoom/pan, the context menu, or placement validation.
+description: How GardenCanvas.tsx works — coordinates, the modeless pointer-event gesture machine, selection/move/resize of beds, plant drag, pick-then-place planting with the heat map, placement rules, undo. Use before changing anything about beds, plants, zoom/pan or placement on the canvas.
 ---
 
 # GardenCanvas
 
-`src/components/garden/GardenCanvas.tsx` is a single ~2100-line component. Read the relevant section before editing; don't refactor it wholesale unless asked.
+`src/components/garden/GardenCanvas.tsx` draws the garden and owns all gestures. Placement rules live in `placement.ts` (pure functions, shared by plant drag, the heat map and GardenPage). Page-level actions (create/delete/rename bed, plant/remove plant, undo) live in `src/pages/GardenPage.tsx`.
 
 ## The bar: Google Maps
 
-Every interaction is judged against Google Maps:
-- **Pan is 1:1** — the point you grabbed stays under your finger/cursor for the whole gesture, no lag or drift.
-- **Zoom anchors on the focal point**: the pinch midpoint or the wheel cursor stays fixed on screen while the scale changes.
-- **Gestures don't fight**: a pan never turns into a plant drag by accident. Long press (200 ms) starts plant moves or opens the context menu, a double tap is its own gesture, and a second finger turns the gesture into a pinch cleanly.
-- **Smooth over clever**: avoid React re-renders on every move event where a transform/ref update would do; keep heavy work (collision checks, DB writes) out of the hot path or run it at the end of the gesture.
-
-When changing gesture code, test on a real phone or with mobile emulation, and compare against how Google Maps feels.
+- **Pan is 1:1**, **zoom anchors on the focal point** (pinch midpoint, wheel cursor, zoom buttons → screen centre via `zoomAt`).
+- **No modes.** Drag on empty space or an unselected bed always pans. A second finger turns pending/pan into pinch; lifting one finger continues the pan without a jump.
+- **Long press = 250 ms** with a filling ring (`.longpress-ring`, appears after 60 ms so taps don't flash) and `navigator.vibrate`. Movement > `TAP_SLOP` (10 px) before that cancels it.
+- Touch targets ≥ 44 px (`HANDLE_HIT` = 22 px radius on screen, visuals stay small via `1/zoom` scaling).
+- Smooth over clever: pan/zoom refs update immediately, React state follows; heavy work happens at gesture end.
 
 ## Coordinates
 
-- `CELL = 48` px, `SUBCELL = CELL / 2 = 24` px. Board is `COLS × ROWS = 20 × 20` cells.
-- `GardenBed.x/y/width/height` are **cells** (global grid).
-- `bed_plants.cell_x/cell_y` are **sub-cells relative to the bed's top-left**. A bed of width W has `W * 2` sub-cells across.
-- A plant occupies a square of `plant.cells_spacing` sub-cells; `around_cells_spacing` is a safety ring around it.
-- Screen → canvas: `lx = (clientX - rect.left - pan.x) / zoom`. Inside callbacks use `panRef`/`zoomRef`/`bedPlantsRef`/`plantNeighborsRef` (kept in sync each render) to avoid stale closures.
+- `CELL = 48` px, `SUBCELL = 24` px, board `COLS × ROWS = 20 × 20` cells. Real scale: `CM_PER_CELL` in `src/lib/units.ts` (`formatBedSize`, `formatArea`).
+- `GardenBed.x/y/width/height` = cells. `bed_plants.cell_x/cell_y` = sub-cells **relative to the bed**.
+- Screen → canvas: `toCanvas()` uses `panRef`/`zoomRef`. Fresh data in handlers: `useGardenStore.getState()`, `bedPlantsRef`, `placingRef`, `relationsRef` (synced in `useLayoutEffect`, never written during render).
 
-## Interaction state machine
+## Gesture machine (Pointer Events, one path for mouse + touch)
 
-`interaction: InteractionState` — `idle | panning | drawing | moving | resizing | movingPlant`.
-Mode from the store (`"pan" | "draw"`) decides what a press starts:
-- **draw mode**: press on empty → `drawing` (draft bed); on bed body → `moving`; on bed edge (hit zone) → `resizing` with a `ResizeHandle`.
-- **pan mode**: drag → `panning`; long press (`LONG_PRESS_MS = 200`) → context menu (plant cell / plant actions); tap plant → quick info; press-and-drag plant → `movingPlant`.
-- Two-finger touch → pinch zoom (`lastPinchDist`).
-`reset()` (exposed via `useImperativeHandle`) clears all transient state; GardenPage calls it on mode change.
+`gesture.current: Gesture` with `kind`: `pending → pan | moveBed | resize | plantDrag | pinch`. Hit test order in `hitTest()`: handle of the selected bed → plant → bed → empty.
+- **Tap** (`pending` released): plant → `onPlantTap` (sheet); bed → select; empty → deselect. While `placing`: tap on a bed → `anchorFor()` (plant centred under the finger) → `evaluatePlacement()` → `onPlaceAt`.
+- **Drag**: handle → `resize` (8 handles, clamped to the board, blocked on bed collision or plants falling out); body of the **selected** bed (also over its plants) → `moveBed` (clamped to board); anything else → `pan`.
+- **Long press on a plant** → `plantDrag` (anchored at the grab point, clamped inside the bed, tooltip for bad/near).
+- Right click on a plant (desktop) → small context menu (info / remove).
+- Overlays stop `onPointerDown` propagation. `setPointerCapture` keeps moves after leaving the canvas.
 
-## Placement validation (plant drag & drop / picking)
+## Placement rules (`placement.ts`)
 
-Three independent checks, all in sub-cells:
-1. **Out of bounds** — `cellX + spacing > bed.width*2` (same for Y) → reject.
-2. **Space collision** — dragged square overlaps another plant's `cells_spacing` square → always reject (`isSpaceCollision`).
-3. **Around collision** — overlaps another plant's `around_cells_spacing` ring → warn/reject (`isAroundCollision`).
-4. **Bad neighbor** — a plant with `relationship = "bad"` (either direction in `plant_neighbors`) within a 1-sub-cell ring → reject unless `user_settings.allow_bad_neighbor_drop` is on.
+`evaluatePlacement()` → `blocked` (out of bed or overlaps a plant footprint) > `bad` (bad neighbour within 1 sub-cell, both directions via `buildRelations`) > `near` (inside another plant's `around_cells_spacing`) > `good` > `ok`. `isPlaceable(status, allowBad)`: never `blocked`; `bad` only with `user_settings.allow_bad_neighbor_drop`. `heatMapForBed()` colours each sub-cell (`HEAT_COLOR`), `remainingCapacity()` = greedy estimate for the placement bar. Change rules here once — drag and heat map follow.
 
-`PlantPickerModal.tsx` re-implements similar checks with `rectsOverlap` for the initial planting — keep both in sync when rules change.
+## Resize from the left/top
 
-Resizing a bed must not leave plants outside the new bounds (check around line ~280) and must not overlap another bed (`resizeCollision`).
+Plants are relative to the bed's top-left, so resizing via `w`/`n` shifts them: live render subtracts `shiftX/shiftY`, commit updates every plant (`shiftPlants`) so they stay at the same spot in the garden; undo reverses both.
 
-## Persistence
+## Persistence and undo
 
-- Bed changes: optimistic `updateBed` in the Zustand store, then `supabase.from("beds").update(...)`.
-- Plant moves: `localPlantOverrides` show the new position immediately, then `bed_plants` update, then `onPlantsChanged()` (refetch).
-- Deleting/returning a plant calls `onReturnToInventory(plantId)` → `user_plants` quantity +1.
+- Beds: optimistic `updateBed/addBed/removeBed` (bumps `bedsVersion` so stale refetches are dropped), then Supabase. Plants: `plantOverrides` / `addLocal` / `removeLocal` until refetch.
+- Every user action pushes `pushUndo(label, fn)` (`src/store/useUndo.ts`) → "Razveljavi" in the StatusArea under the toolbar + toolbar undo. Drag warnings go there too via `onDragWarning` — keep the bottom free for thumb controls. No confirmation dialogs — make actions reversible instead (deleting a bed snapshots its plants and re-inserts both with the same ids).
+- Free-plan limits still apply: planting handles `plant_limit_reached` with `promptUpgrade`.
 
-## Gotchas (from git history)
+## Gotchas
 
-- Context menu must close when a drag starts.
-- Firefox mobile bottom URL bar shifts layout — keep `viewport-fit=cover` and `pb-safe` paddings.
-- Overlays must stop `mousedown`/`touchstart` propagation or the canvas reacts underneath.
-- After changes, test both mouse and touch (browser devtools mobile emulation) and run `npm run build`.
+- Firefox mobile bottom URL bar — keep `viewport-fit=cover` / `pb-safe`.
+- Test with mobile emulation (synthetic `PointerEvent`s with `pointerType: "touch"` work for scripted checks) and on a real phone; run `npm run build` and `npm run lint`.

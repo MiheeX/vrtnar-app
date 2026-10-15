@@ -47,13 +47,17 @@ src/
   pages/GardenPage.tsx          orchestrator: wires hooks, modals, and GardenCanvas
   pages/LoginPage.tsx           email/password login + sign-up + "Pozabljeno geslo?" (reset email)
   pages/ResetPasswordPage.tsx   /reset-password: set a new password from the email link
-  components/garden/GardenCanvas.tsx   ~2100 lines: pan/zoom, draw/move/resize beds, plant drag&drop, context menu, collisions
+  components/garden/GardenCanvas.tsx   modeless canvas (Pointer Events): pan/pinch/wheel zoom, select/move/resize beds, plant drag, tap-to-plant with heat map
+  components/garden/placement.ts       placement rules (blocked/bad/near/good/ok), heat map, capacity — shared by drag and planting
+  components/garden/*.tsx              GardenFab (+), NewBedSheet (size presets), BedActionBar, PlantPlaceSheet, PlacementBar
+  components/StatusArea.tsx + store/useUndo.ts  status area under the toolbar: "Razveljavi" toasts, notices, drag warnings; undo history
+  lib/units.ts                  CM_PER_CELL and size/area formatting
   components/PlantSheet.tsx     plant bottom sheet, two snap points (peek ↔ full), follows the finger 1:1
   components/SideMenu.tsx       burger drawer with levels: main → Moji vrtovi / Nastavitve; Dodaj rastline; Odjava
   components/Toolbar.tsx        burger + current garden name, inventory, pan/draw mode
-  components/*Modal.tsx         Inventory, PlantPicker (planting), PlantSelector (catalog → inventory)
+  components/*Modal.tsx         Inventory, PlantSelector (catalog → inventory), Upgrade
   hooks/use*.ts                 one hook per Supabase table/concern (data fetch + mutations)
-  store/useGardenStore.ts       beds, mode ("pan" | "draw"), selectedBedId; only `mode` is persisted
+  store/useGardenStore.ts       beds, bedsVersion (drops stale refetches), selectedBedId; nothing persisted
   types/index.ts, types/garden.ts
 ```
 
@@ -91,8 +95,8 @@ src/
 - Data access: call `supabase.from(...)` inside a hook in `src/hooks/` (or in the component that owns the action), update local state after the response; optimistic updates are used for settings and bed plant fields.
 - Joins use PostgREST embedding: `select("*, plant:plants(...)")`. A join may come back as object or array — see `getSpacing` in `PlantPickerModal.tsx`.
 - Canvas coordinates: `CELL = 48px`, `SUBCELL = 24px`. Beds live in cells, plants in sub-cells relative to their bed. See the `garden-canvas` skill before touching `GardenCanvas.tsx`.
-- Every overlay/modal stops `onMouseDown`/`onTouchStart` propagation so the canvas doesn't react underneath.
-- Mobile first: test touch (long-press 200 ms = context menu, pinch zoom), and Firefox mobile's bottom URL bar (`viewport-fit=cover`, `pb-safe`).
+- Mobile first: no modes — tap selects, drag pans (or moves the selected bed), long press 250 ms drags a plant, + button adds beds/plants. User actions are reversible via `pushUndo` instead of confirm dialogs. Test touch + pinch in mobile emulation, and Firefox mobile's bottom URL bar (`viewport-fit=cover`, `pb-safe`).
+- Overlays/modals stop `onPointerDown` propagation so the canvas doesn't react underneath.
 
 ## Secrets
 

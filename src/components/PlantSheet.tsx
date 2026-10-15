@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { X, Droplets } from "lucide-react";
+import { X, Droplets, Trash2 } from "lucide-react";
 import type { BedPlant } from "../hooks/useBedPlants";
 import type { PlantNeighbor } from "../types";
 import { supabase } from "../lib/supabaseClient";
@@ -22,6 +22,8 @@ interface Props {
     field: "variety" | "notes",
     value: string | null,
   ) => void;
+  // Odstrani rastlino iz gredice (z možnostjo razveljavitve)
+  onRemove?: (bedPlantId: string) => void;
 }
 
 const SNAP_TRANSITION = "transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)";
@@ -61,6 +63,7 @@ function PlantSheetInner({
   allBedPlants,
   onUpdated,
   onOptimisticUpdate,
+  onRemove,
 }: Props & { bedPlant: BedPlant }) {
   const [variety, setVariety] = useState(bedPlant.variety ?? "");
   const [notes, setNotes] = useState(bedPlant.notes ?? "");
@@ -379,13 +382,24 @@ function PlantSheetInner({
                   )}
                 </div>
               </div>
-              <button
-                onClick={close}
-                aria-label="Zapri"
-                className="p-1 text-stone-400 hover:text-stone-600"
-              >
-                <X size={22} />
-              </button>
+              <div className="flex items-center gap-1">
+                {onRemove && (
+                  <button
+                    onClick={() => onRemove(bedPlant.id)}
+                    aria-label="Odstrani iz gredice"
+                    className="p-2 rounded-full text-stone-400 hover:text-red-600 active:bg-red-50"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                )}
+                <button
+                  onClick={close}
+                  aria-label="Zapri"
+                  className="p-1 text-stone-400 hover:text-stone-600"
+                >
+                  <X size={22} />
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-col gap-1 mb-4 text-sm text-stone-500">
