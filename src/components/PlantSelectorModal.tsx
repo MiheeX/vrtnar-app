@@ -3,6 +3,7 @@ import { X, Plus, Minus, Trash2, Sparkles, AlertTriangle } from "lucide-react";
 import { usePlants } from "../hooks/usePlants";
 import type { UserInventoryPlant } from "../types/index";
 import type { AddPlantResult } from "../hooks/useUserInventory";
+import { promptUpgrade } from "../store/useUpgradePrompt";
 
 interface Props {
   open: boolean;
@@ -15,7 +16,6 @@ interface Props {
   maxPerPlant?: number | null;
   totalFor?: (plantId: string) => number;
   planLabel?: string;
-  onUpgrade?: () => void;
 }
 
 export function PlantSelectorModal({
@@ -28,7 +28,6 @@ export function PlantSelectorModal({
   maxPerPlant = null,
   totalFor = () => 0,
   planLabel = "Free",
-  onUpgrade,
 }: Props) {
   const { plants, loading } = usePlants();
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -52,7 +51,16 @@ export function PlantSelectorModal({
     return remaining == null ? qty : Math.max(1, Math.min(qty, remaining));
   };
 
+  const plantName = (plantId: string) =>
+    plants.find((p) => p.id === plantId)?.name ?? null;
+
   const adjustQty = (plantId: string, delta: number) => {
+    const remaining = remainingFor(plantId);
+    // + čez omejitev paketa → ponudi nadgradnjo
+    if (delta > 0 && remaining != null && getQty(plantId) >= remaining) {
+      promptUpgrade("plants", plantName(plantId));
+      return;
+    }
     setQuantities((prev) => ({
       ...prev,
       [plantId]: Math.max(1, getQty(plantId) + delta),
@@ -60,8 +68,14 @@ export function PlantSelectorModal({
   };
 
   const handleAdd = async (plantId: string) => {
+    if (remainingFor(plantId) === 0) {
+      promptUpgrade("plants", plantName(plantId));
+      return;
+    }
     const result = await onAdd(plantId, getQty(plantId));
     setNotice(result.ok ? null : { plantId, kind: result.reason });
+    if (!result.ok && result.reason === "limit")
+      promptUpgrade("plants", plantName(plantId));
   };
 
   const filteredPlants = plants.filter((plant) =>
@@ -182,18 +196,22 @@ export function PlantSelectorModal({
                 </span>
                 <button
                   onClick={() => adjustQty(plant.id, 1)}
-                  disabled={remaining != null && getQty(plant.id) >= remaining}
-                  className="px-2 py-1 text-stone-500 hover:bg-stone-100 disabled:opacity-30"
+                  className={`px-2 py-1 hover:bg-stone-100 ${
+                    remaining != null && getQty(plant.id) >= remaining
+                      ? "text-stone-300"
+                      : "text-stone-500"
+                  }`}
                 >
                   <Plus size={13} />
                 </button>
               </div>
 
-              {/* Dodaj — onemogočen, ko je omejitev paketa dosežena */}
+              {/* Dodaj — pri doseženi omejitvi odpre poziv k nadgradnji */}
               <button
                 onClick={() => handleAdd(plant.id)}
-                disabled={atLimit}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:bg-stone-300"
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-sm font-medium transition-colors ${
+                  atLimit ? "bg-stone-300" : "bg-green-500 hover:bg-green-600"
+                }`}
               >
                 <Plus size={14} /> Dodaj
               </button>
@@ -228,14 +246,12 @@ export function PlantSelectorModal({
                   posajeno). Zdaj jih imaš {total}
                   {total > maxPerPlant ? ", zato novih ne moreš dodati" : ""}.
                 </p>
-                {onUpgrade && (
-                  <button
-                    onClick={onUpgrade}
-                    className="mt-1.5 inline-flex items-center gap-1 font-semibold text-amber-700"
-                  >
-                    <Sparkles size={12} /> Nadgradi na Pro za neomejeno
-                  </button>
-                )}
+                <button
+                  onClick={() => promptUpgrade("plants", plant.name)}
+                  className="mt-1.5 inline-flex items-center gap-1 font-semibold text-amber-700"
+                >
+                  <Sparkles size={12} /> Nadgradi na Pro za neomejeno
+                </button>
               </div>
             </div>
           )}

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { GardenSummary } from "../hooks/useGardens";
 import { PLAN_LABEL, type Plan } from "../lib/plans";
+import { promptUpgrade } from "../store/useUpgradePrompt";
 
 type Level = "main" | "gardens" | "settings";
 type SubLevel = Exclude<Level, "main">;
@@ -235,12 +236,11 @@ export function SideMenu({
     setBusy(false);
     if (result.ok) {
       onClose();
+    } else if (result.reason === "limit") {
+      setCreating(false);
+      promptUpgrade("gardens");
     } else {
-      setMessage(
-        result.reason === "limit"
-          ? "Dosegel si največje število vrtov za svoj paket."
-          : "Vrta ni bilo mogoče ustvariti. Poskusi znova.",
-      );
+      setMessage("Vrta ni bilo mogoče ustvariti. Poskusi znova.");
     }
   };
 
@@ -498,10 +498,15 @@ export function SideMenu({
           <button
             onClick={() => {
               setMessage(null);
-              setCreating(true);
+              // Omejitev paketa dosežena → poziv k nadgradnji namesto obrazca
+              if (atLimit) promptUpgrade("gardens");
+              else setCreating(true);
             }}
-            disabled={atLimit}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 text-sm font-medium active:bg-green-50 disabled:border-stone-200 disabled:text-stone-400"
+            className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed text-sm font-medium ${
+              atLimit
+                ? "border-stone-200 text-stone-400 active:bg-stone-50"
+                : "border-green-300 text-green-700 active:bg-green-50"
+            }`}
           >
             <Plus size={18} /> Nov vrt
           </button>
@@ -514,9 +519,8 @@ export function SideMenu({
             </p>
             {plan === "free" && (
               <button
-                onClick={() => handleBilling(onUpgrade)}
-                disabled={billingBusy}
-                className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700 disabled:opacity-50"
+                onClick={() => promptUpgrade("gardens")}
+                className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700"
               >
                 <Sparkles size={12} /> Nadgradi na Pro za več vrtov
               </button>

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { X, Check } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import { limitErrorOf } from "../lib/plans";
+import { promptUpgrade } from "../store/useUpgradePrompt";
 import type { UserInventoryPlant, PlantNeighbor } from "../types/index";
 
 interface BedPlant {
@@ -332,6 +334,11 @@ export function PlantPickerModal({
       quantity: 1,
     });
     if (error) {
+      if (limitErrorOf(error) === "plant_limit_reached") {
+        onClose();
+        promptUpgrade("plants");
+        return;
+      }
       console.error("Napaka pri sajenju:", error);
       return;
     }
