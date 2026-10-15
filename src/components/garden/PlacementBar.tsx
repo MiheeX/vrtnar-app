@@ -5,12 +5,20 @@ interface Props {
   placing: PlacingPlant;
   placedCount: number;
   remaining: number | null; // ocena prostora v ciljni gredici
+  stockLeft: number | null; // "Sadi iz zaloge": še v zalogi (null = ni omejeno z zalogo)
   onDone: () => void;
   onChange: () => void;
 }
 
 // Vrstica med sajenjem: katera rastlina, koliko jih je posajenih, legenda barv, "Končano"
-export function PlacementBar({ placing, placedCount, remaining, onDone, onChange }: Props) {
+export function PlacementBar({
+  placing,
+  placedCount,
+  remaining,
+  stockLeft,
+  onDone,
+  onChange,
+}: Props) {
   return (
     <div
       className="absolute left-0 right-0 bottom-0 z-30 px-3 pb-safe"
@@ -28,6 +36,7 @@ export function PlacementBar({ placing, placedCount, remaining, onDone, onChange
               <span className="block font-semibold text-stone-800 truncate">{placing.name}</span>
               <span className="block text-xs text-stone-500">
                 {placedCount > 0 ? `Posajenih: ${placedCount}` : "Tapni na gredico"}
+                {stockLeft != null && ` · v zalogi še ${stockLeft}`}
                 {remaining != null && ` · prostora še za ~${remaining}`}
               </span>
             </span>

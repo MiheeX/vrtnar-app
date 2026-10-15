@@ -12,6 +12,9 @@ interface Props {
   totalFor: (plantId: string) => number;
   maxPerPlant: number | null;
   targetBedName?: string | null;
+  // Nastavitev "Sadi iz zaloge": samo rastline z zalogo > 0
+  inventoryOnly: boolean;
+  onAddToInventory: () => void;
 }
 
 // Izbira rastline za sajenje: rastline iz zaloge najprej, nato celoten katalog.
@@ -28,16 +31,20 @@ function PlantPlaceSheetContent({
   totalFor,
   maxPerPlant,
   targetBedName,
+  inventoryOnly,
+  onAddToInventory,
 }: Props) {
   const { plants, loading } = usePlants();
   const [query, setQuery] = useState("");
 
   const qty = (id: string) => inventory.find((i) => i.plant_id === id)?.quantity ?? 0;
   const filtered = plants
+    .filter((p) => !inventoryOnly || qty(p.id) > 0)
     .filter((p) =>
       `${p.name} ${p.latin_name ?? ""}`.toLowerCase().includes(query.toLowerCase()),
     )
     .sort((a, b) => Number(qty(b.id) > 0) - Number(qty(a.id) > 0));
+  const emptyInventory = inventoryOnly && !loading && !inventory.some((i) => i.quantity > 0);
 
   const pick = (plant: Plant) => {
     if (maxPerPlant != null && totalFor(plant.id) >= maxPerPlant && qty(plant.id) === 0) {
@@ -58,9 +65,10 @@ function PlantPlaceSheetContent({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-stone-800">Kaj boš posadil?</h2>
-              {targetBedName && (
-                <p className="text-xs text-stone-500">v gredico {targetBedName}</p>
-              )}
+              <p className="text-xs text-stone-500">
+                {inventoryOnly ? "Iz zaloge" : "Vse rastline"}
+                {targetBedName && ` · v gredico ${targetBedName}`}
+              </p>
             </div>
             <button onClick={onClose} aria-label="Zapri" className="p-2 -mr-2 text-stone-400">
               <X size={22} />
@@ -79,6 +87,24 @@ function PlantPlaceSheetContent({
 
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-2 pb-safe">
           {loading && <p className="text-sm text-stone-400 text-center py-6">Nalagam…</p>}
+          {emptyInventory && (
+            <div className="text-center py-8 px-4">
+              <div className="text-4xl">🧺</div>
+              <p className="mt-2 font-semibold text-stone-800">Zaloga je prazna</p>
+              <p className="mt-1 text-sm text-stone-500">
+                Sadiš iz zaloge — najprej dodaj rastline, ki jih nameravaš posaditi.
+              </p>
+              <button
+                onClick={onAddToInventory}
+                className="mt-4 px-5 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold active:bg-green-700"
+              >
+                Dodaj v zalogo
+              </button>
+              <p className="mt-3 text-xs text-stone-400">
+                Ali izklopi »Sadi iz zaloge« v Nastavitvah za vse rastline.
+              </p>
+            </div>
+          )}
           {filtered.map((plant) => {
             const inStock = qty(plant.id);
             const total = totalFor(plant.id);

@@ -76,7 +76,7 @@ src/
 | `plants` | catalog: id, name, latin_name, img (emoji), cells_spacing, around_cells_spacing |
 | `plant_neighbors` | plant_id, neighbor_id, relationship `"good" \| "bad"` (symmetric — check both directions) |
 | `user_plants` | inventory: user_id, plant_id, quantity |
-| `user_settings` | user_id (unique), show_sub_grid, allow_bad_neighbor_drop |
+| `user_settings` | user_id (unique), show_sub_grid, allow_bad_neighbor_drop, plant_from_inventory (planting only from inventory, each plant uses one) |
 | `profiles` | plan (`free`/`pro`), stripe_customer_id, stripe_subscription_id, subscription_status, current_period_end, cancel_at_period_end — written only by the `stripe-webhook` Edge Function. Clients may only update username, full_name, avatar_url (column grants) |
 
 `GardenPlant`, `GardenSection`, `SectionPlant` in `types/index.ts` are older shapes; current code uses `BedPlant` from `hooks/useBedPlants.ts`.

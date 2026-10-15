@@ -122,6 +122,9 @@ const GardenPage: React.FC = () => {
 
   const showSubGrid = settings.show_sub_grid;
   const allowBadNeighborDrop = settings.allow_bad_neighbor_drop;
+  const plantFromInventory = settings.plant_from_inventory;
+  // Pri "Sadi iz zaloge": koliko jih je bilo v zalogi ob začetku sajenja
+  const [stockAtStart, setStockAtStart] = useState<number | null>(null);
 
   const undoHistory = useUndo((s) => s.history);
   const undoLast = useUndo((s) => s.undoLast);
@@ -341,6 +344,11 @@ const GardenPage: React.FC = () => {
       img: plant.img ?? null,
     });
     setPlacedCount(0);
+    setStockAtStart(
+      plantFromInventory
+        ? (inventory.find((i) => i.plant_id === plant.id)?.quantity ?? 0)
+        : null,
+    );
   };
 
   const stopPlacing = () => {
@@ -357,6 +365,11 @@ const GardenPage: React.FC = () => {
           ? "Tu ni dovolj prostora"
           : `Slab sosed: ${result.badNames.join(", ")}`,
       );
+      return;
+    }
+    // "Sadi iz zaloge": brez zaloge ni sajenja (lokalni števec — zaloga se osveži z zamikom)
+    if (stockAtStart != null && stockAtStart - placedCount <= 0) {
+      notify(`Zaloga porabljena: ${pl.name} — dodaj jih v zalogo`);
       return;
     }
     const maxPerPlant = planApi.limits?.max_per_plant ?? null;
@@ -410,13 +423,14 @@ const GardenPage: React.FC = () => {
       }
       return;
     }
-    // Rastlina iz zaloge se porabi; brez zaloge se samo posadi
-    const consumed = inStock > 0;
+    // Rastlina iz zaloge se porabi; brez zaloge (samo, ko "Sadi iz zaloge" ni vklopljeno) se samo posadi
+    const consumed = stockAtStart != null || inStock > 0;
     if (consumed) consumePlant(pl.plantId, 1);
     setPlacedCount((c) => c + 1);
     refreshBedPlants();
     pushUndo(`${pl.name} posajen`, async () => {
       removeLocal(id);
+      setPlacedCount((c) => Math.max(0, c - 1));
       const { error: delError } = await supabase.from("bed_plants").delete().eq("id", id);
       if (delError) throw delError;
       if (consumed) await addPlant(pl.plantId, 1);
@@ -503,6 +517,10 @@ const GardenPage: React.FC = () => {
         onToggleAllowBadNeighborDrop={() =>
           updateSetting("allow_bad_neighbor_drop", !allowBadNeighborDrop)
         }
+        plantFromInventory={plantFromInventory}
+        onTogglePlantFromInventory={() =>
+          updateSetting("plant_from_inventory", !plantFromInventory)
+        }
         onSignOut={async () => {
           const { error } = await supabase.auth.signOut();
           if (error) console.error("Napaka pri odjavi:", error);
@@ -574,6 +592,7 @@ const GardenPage: React.FC = () => {
             placing={placing}
             placedCount={placedCount}
             remaining={remaining}
+            stockLeft={stockAtStart != null ? Math.max(0, stockAtStart - placedCount) : null}
             onDone={stopPlacing}
             onChange={() => openPlantPicker(placingBedId)}
           />
@@ -614,6 +633,11 @@ const GardenPage: React.FC = () => {
         totalFor={totalFor}
         maxPerPlant={planApi.limits?.max_per_plant ?? null}
         targetBedName={beds.find((b) => b.id === placingBedId)?.name ?? null}
+        inventoryOnly={plantFromInventory}
+        onAddToInventory={() => {
+          setPlantSheetOpen(false);
+          setAddPlantsOpen(true);
+        }}
       />
 
       <InventoryModal
