@@ -11,6 +11,7 @@ import { useRealtimeSync } from "../hooks/useRealtimeSync";
 import { usePlan } from "../hooks/usePlan";
 import { startProCheckout, openBillingPortal } from "../lib/billing";
 import { PLAN_LABEL } from "../lib/plans";
+import { UpgradeModal } from "../components/UpgradeModal";
 import { SideMenu } from "../components/SideMenu";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
@@ -203,6 +204,9 @@ const GardenPage: React.FC = () => {
         />
       </div>
 
+      {/* Poziv k nadgradnji — odpre ga vsaka akcija, ki preseže paket Free */}
+      <UpgradeModal limits={planApi.limits} onUpgrade={startProCheckout} />
+
       <SideMenu
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -349,9 +353,6 @@ const GardenPage: React.FC = () => {
         maxPerPlant={planApi.limits?.max_per_plant ?? null}
         totalFor={totalFor}
         planLabel={PLAN_LABEL[planApi.plan]}
-        onUpgrade={() => {
-          startProCheckout().catch(() => {});
-        }}
         onRemove={removePlant}
       />
 
