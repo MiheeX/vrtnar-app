@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { isAtLimit, limitErrorOf } from "../lib/plans";
 
 export interface GardenSummary {
   id: string;
@@ -7,8 +8,6 @@ export interface GardenSummary {
   created_at: string;
   bedCount: number;
 }
-
-type Plan = "free" | "premium";
 
 // Zadnji odprt vrt je stvar naprave (UI stanje), zato localStorage
 const lastGardenKey = (userId: string) => `vrtnar:lastGardenId:${userId}`;
@@ -29,16 +28,11 @@ function writeLastGarden(userId: string, gardenId: string) {
   }
 }
 
-// Napaka iz triggerja gardens_enforce_limit
-export function isGardenLimitError(error: { message?: string } | null) {
-  return !!error?.message?.includes("garden_limit_reached");
-}
-
-export function useGardens(userId: string | null) {
+// maxGardens pride iz usePlan (plan_limits); null = brez omejitve.
+// Omejitev uveljavlja trigger gardens_enforce_limit — tukaj je samo za prikaz.
+export function useGardens(userId: string | null, maxGardens: number | null) {
   const [gardens, setGardens] = useState<GardenSummary[]>([]);
   const [currentGardenId, setCurrentGardenId] = useState<string | null>(null);
-  const [plan, setPlan] = useState<Plan>("free");
-  const [maxGardens, setMaxGardens] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const creatingDefault = useRef(false);
 
@@ -68,32 +62,11 @@ export function useGardens(userId: string | null) {
     return list;
   }, [userId]);
 
-  // Paket in omejitev (plan_limits) — za prikaz v meniju; baza jo tudi uveljavi
-  const fetchLimits = useCallback(async () => {
-    if (!userId) return;
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("plan")
-      .eq("id", userId)
-      .maybeSingle();
-    if (profileError) console.error("profiles error:", profileError);
-    const userPlan: Plan = profile?.plan === "premium" ? "premium" : "free";
-    setPlan(userPlan);
-
-    const { data: limits, error: limitsError } = await supabase
-      .from("plan_limits")
-      .select("max_gardens")
-      .eq("plan", userPlan)
-      .maybeSingle();
-    if (limitsError) console.error("plan_limits error:", limitsError);
-    setMaxGardens(limits?.max_gardens ?? null);
-  }, [userId]);
-
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
     (async () => {
-      const [list] = await Promise.all([fetchGardens(), fetchLimits()]);
+      const list = await fetchGardens();
       if (cancelled || !list) return;
 
       if (list.length === 0) {
@@ -121,7 +94,7 @@ export function useGardens(userId: string | null) {
     return () => {
       cancelled = true;
     };
-  }, [userId, fetchGardens, fetchLimits]);
+  }, [userId, fetchGardens]);
 
   const selectGarden = (id: string) => {
     setCurrentGardenId(id);
@@ -138,7 +111,8 @@ export function useGardens(userId: string | null) {
       .select("id, name, created_at")
       .single();
     if (error || !data) {
-      if (isGardenLimitError(error)) return { ok: false, reason: "limit" };
+      if (limitErrorOf(error) === "garden_limit_reached")
+        return { ok: false, reason: "limit" };
       console.error("Napaka pri ustvarjanju vrta:", error);
       return { ok: false, reason: "error" };
     }
@@ -180,14 +154,12 @@ export function useGardens(userId: string | null) {
   };
 
   const currentGarden = gardens.find((g) => g.id === currentGardenId) ?? null;
-  const atLimit = maxGardens !== null && gardens.length >= maxGardens;
+  const atLimit = isAtLimit(gardens.length, maxGardens);
 
   return {
     gardens,
     currentGarden,
     currentGardenId,
-    plan,
-    maxGardens,
     atLimit,
     loading,
     selectGarden,

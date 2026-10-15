@@ -42,9 +42,18 @@ Types are hand-written in `src/types/index.ts` and `src/hooks/useBedPlants.ts`. 
 
 The base schema was created by hand in the dashboard; later changes live in `supabase/migrations/`. For any schema change:
 1. Write the SQL as a file in `supabase/migrations/<timestamp>_<name>.sql` and apply the same SQL with the Supabase MCP `apply_migration`.
-2. Enable RLS on every new table and add policies scoped to `auth.uid() = user_id` for user-owned data; catalog tables (`plants`, `plant_neighbors`) are read-only for clients.
-3. Update the TS types and the data-model table in `CLAUDE.md`.
-4. Ask the user before destructive SQL (DROP, DELETE without WHERE, column type changes) — this is the live project database.
+2. Enable RLS on every new table and add policies `to authenticated` with `user_id = (select auth.uid())` (subselect = evaluated once per query) and a WITH CHECK; catalog tables (`plants`, `plant_neighbors`, `plan_limits`) are read-only for clients.
+3. New user-owned table that the UI shows → add it to the `supabase_realtime` publication and a handler in `useRealtimeSync`.
+4. Update the TS types and the data-model table in `CLAUDE.md`.
+5. Ask the user before destructive SQL (DROP, DELETE without WHERE, column type changes) — this is the live project database. The MCP auto-declines migrations with DROP/REVOKE in this app; then give the user the file to run in the SQL editor and verify afterwards with read queries. Write migrations to be re-runnable (`if exists` / `if not exists`).
+
+## Plan limits (Free / Pro)
+
+Anything a user can create more of (gardens, plants, beds, notes, …) or any paid feature must be decided against the plan model (see CLAUDE.md "Subscriptions"):
+- Limit → nullable column in `plan_limits` (NULL = unlimited), enforced by a BEFORE INSERT/UPDATE trigger that calls `public.limits_for_user(user_id)` and raises a stable error code (`<thing>_limit_reached`); take an advisory lock per user to avoid races. Add the code to `LimitError` in `src/lib/plans.ts`.
+- Pro-only feature → key in `plan_limits.features`, checked server-side as well as with `hasFeature()` in UI.
+- Trigger/helper functions: `security definer`, `set search_path = ''`, fully qualified names, `revoke execute ... from public, anon, authenticated`.
+- `profiles.plan` and Stripe fields are written only by the `stripe-webhook` Edge Function (service role). Clients can't update them (column grants).
 
 ## Secrets
 

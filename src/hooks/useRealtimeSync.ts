@@ -1,7 +1,13 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 
-type SyncTable = "gardens" | "beds" | "bed_plants" | "user_plants" | "user_settings";
+type SyncTable =
+  | "gardens"
+  | "beds"
+  | "bed_plants"
+  | "user_plants"
+  | "user_settings"
+  | "profiles";
 
 export type SyncHandlers = Record<SyncTable, () => void>;
 
@@ -11,7 +17,11 @@ const TABLES: SyncTable[] = [
   "bed_plants",
   "user_plants",
   "user_settings",
+  "profiles",
 ];
+
+// profiles ima uporabnika v stolpcu id, ostale tabele v user_id
+const ownerColumn = (table: SyncTable) => (table === "profiles" ? "id" : "user_id");
 
 // Več dogodkov v kratkem času (npr. sajenje več rastlin) = en refetch
 const DEBOUNCE_MS = 300;
@@ -45,15 +55,16 @@ export function useRealtimeSync(userId: string | null, handlers: SyncHandlers) {
     for (const table of TABLES) {
       // INSERT/UPDATE filtriramo po uporabniku; DELETE filtrov ne podpira
       // (stara vrstica ima samo id), zato ga poslušamo posebej.
+      const filter = `${ownerColumn(table)}=eq.${userId}`;
       channel
         .on(
           "postgres_changes",
-          { event: "INSERT", schema: "public", table, filter: `user_id=eq.${userId}` },
+          { event: "INSERT", schema: "public", table, filter },
           () => schedule(table),
         )
         .on(
           "postgres_changes",
-          { event: "UPDATE", schema: "public", table, filter: `user_id=eq.${userId}` },
+          { event: "UPDATE", schema: "public", table, filter },
           () => schedule(table),
         )
         .on("postgres_changes", { event: "DELETE", schema: "public", table }, () =>

@@ -1,15 +1,20 @@
 import { useState, useEffect } from "react";
-import { X, Plus, Minus, Trash2 } from "lucide-react";
+import { X, Plus, Minus, Trash2, Sparkles } from "lucide-react";
 import { usePlants } from "../hooks/usePlants";
 import type { UserInventoryPlant } from "../types/index";
+import type { AddPlantResult } from "../hooks/useUserInventory";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   inventory: UserInventoryPlant[];
-  onAdd: (plantId: string, quantity: number) => void;
+  onAdd: (plantId: string, quantity: number) => Promise<AddPlantResult>;
   onRemove: (userPlantId: string) => void;
   embedded?: boolean;
+  // Omejitev paketa: inventar + posajeno na vrsto rastline (null = brez omejitve)
+  maxPerPlant?: number | null;
+  totalFor?: (plantId: string) => number;
+  onUpgrade?: () => void;
 }
 
 export function PlantSelectorModal({
@@ -19,21 +24,38 @@ export function PlantSelectorModal({
   onAdd,
   onRemove,
   embedded = false,
+  maxPerPlant = null,
+  totalFor = () => 0,
+  onUpgrade,
 }: Props) {
   const { plants, loading } = usePlants();
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [limitPlantId, setLimitPlantId] = useState<string | null>(null);
 
   const getInventoryEntry = (plantId: string) =>
     inventory.find((i) => i.plant_id === plantId);
 
-  const getQty = (plantId: string) => quantities[plantId] ?? 1;
+  // Koliko jih še lahko doda (null = neomejeno)
+  const remainingFor = (plantId: string) =>
+    maxPerPlant == null ? null : Math.max(0, maxPerPlant - totalFor(plantId));
+
+  const getQty = (plantId: string) => {
+    const remaining = remainingFor(plantId);
+    const qty = quantities[plantId] ?? 1;
+    return remaining == null ? qty : Math.max(1, Math.min(qty, remaining));
+  };
 
   const adjustQty = (plantId: string, delta: number) => {
     setQuantities((prev) => ({
       ...prev,
-      [plantId]: Math.max(1, (prev[plantId] ?? 1) + delta),
+      [plantId]: Math.max(1, getQty(plantId) + delta),
     }));
+  };
+
+  const handleAdd = async (plantId: string) => {
+    const result = await onAdd(plantId, getQty(plantId));
+    setLimitPlantId(!result.ok && result.reason === "limit" ? plantId : null);
   };
 
   const filteredPlants = plants.filter((plant) =>
@@ -91,6 +113,8 @@ export function PlantSelectorModal({
       {filteredPlants.map((plant) => {
         const entry = getInventoryEntry(plant.id);
         const inInventory = !!entry;
+        const remaining = remainingFor(plant.id);
+        const atLimit = remaining === 0;
         return (
           <div
             key={plant.id}
@@ -116,6 +140,21 @@ export function PlantSelectorModal({
                   ✓ {entry!.quantity} v zalogah
                 </p>
               )}
+              {maxPerPlant != null && (
+                <p
+                  className={`text-xs mt-0.5 ${atLimit ? "text-amber-600 font-medium" : "text-stone-400"}`}
+                >
+                  {totalFor(plant.id)} / {maxPerPlant} (zaloga + posajeno)
+                </p>
+              )}
+              {(atLimit || limitPlantId === plant.id) && onUpgrade && (
+                <button
+                  onClick={onUpgrade}
+                  className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700"
+                >
+                  <Sparkles size={12} /> Več s paketom Pro
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -133,16 +172,18 @@ export function PlantSelectorModal({
                 </span>
                 <button
                   onClick={() => adjustQty(plant.id, 1)}
-                  className="px-2 py-1 text-stone-500 hover:bg-stone-100"
+                  disabled={remaining != null && getQty(plant.id) >= remaining}
+                  className="px-2 py-1 text-stone-500 hover:bg-stone-100 disabled:opacity-30"
                 >
                   <Plus size={13} />
                 </button>
               </div>
 
-              {/* Dodaj — vedno prikazan */}
+              {/* Dodaj — onemogočen, ko je omejitev paketa dosežena */}
               <button
-                onClick={() => onAdd(plant.id, getQty(plant.id))}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition-colors"
+                onClick={() => handleAdd(plant.id)}
+                disabled={atLimit}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition-colors disabled:bg-stone-300"
               >
                 <Plus size={14} /> Dodaj
               </button>

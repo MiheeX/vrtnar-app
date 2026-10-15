@@ -12,7 +12,7 @@ UI text and most code comments are in **Slovenian**. Comments may be Slovenian o
 - **Inventory = plants the user plans to plant**, added from the shared plant catalog. Planting a plant uses one from the inventory, and removing it from a bed returns it.
 - **Good/bad neighbors** show while dragging on the canvas, when planting next to a plant, and in the catalog.
 - **Time is coming**: planting dates, care (watering), seasons/years, crop rotation.
-- **Free vs premium** (to be decided): premium gets more plants, gardens, bigger gardens, more settings and features. Write limits as data (per plan), not as scattered constants, and enforce them in the database too (RLS/constraints), not only in the UI.
+- **Subscription model: Free / Pro (Stripe).** Every new feature is designed with the plans in mind — ask "is this Free, Pro, or limited on Free?" and say so when proposing it. See **Subscriptions** below.
 
 ## Stack
 
@@ -66,16 +66,25 @@ src/
 | table | key columns |
 |---|---|
 | `gardens` | id, user_id, name, created_at — first one auto-created ("Moj vrt") in `useGardens`; insert limited by plan (trigger); deleting cascades to beds and bed_plants |
-| `plan_limits` | plan (`free`/`premium`) PK, max_gardens — limits as data, read-only for clients |
+| `plan_limits` | plan (`free`/`pro`) PK, max_gardens, max_per_plant (NULL = unlimited), features jsonb — limits as data, read-only for clients |
 | `beds` | id, user_id, garden_id, name, x, y, width, height, color — **units: grid cells** |
 | `bed_plants` | id, user_id, garden_id, bed_id, plant_id, cell_x, cell_y, quantity, variety, planted_at, last_watered_at, notes — **cell_x/y in sub-cells** |
 | `plants` | catalog: id, name, latin_name, img (emoji), cells_spacing, around_cells_spacing |
 | `plant_neighbors` | plant_id, neighbor_id, relationship `"good" \| "bad"` (symmetric — check both directions) |
 | `user_plants` | inventory: user_id, plant_id, quantity |
 | `user_settings` | user_id (unique), show_sub_grid, allow_bad_neighbor_drop |
-| `profiles` | typed in `types/index.ts`; `plan` is read for limits. Clients may only update username, full_name, avatar_url (column grants) |
+| `profiles` | plan (`free`/`pro`), stripe_customer_id, stripe_subscription_id, subscription_status, current_period_end, cancel_at_period_end — written only by the `stripe-webhook` Edge Function. Clients may only update username, full_name, avatar_url (column grants) |
 
 `GardenPlant`, `GardenSection`, `SectionPlant` in `types/index.ts` are older shapes; current code uses `BedPlant` from `hooks/useBedPlants.ts`.
+
+## Subscriptions (Free / Pro)
+
+- **Plans:** `free` (default) and `pro` (paid, Stripe). Free today: 1 garden, 10 of each plant type (inventory + planted across all gardens). Pro: unlimited. Numbers live only in the `plan_limits` table — change a row, not code.
+- **Limits are data and enforced in the database.** Triggers raise `garden_limit_reached` / `plant_limit_reached` (`gardens_enforce_limit`, `user_plants_enforce_limit`, `bed_plants_enforce_limit`, helper `limits_for_user`). The UI only shows usage and disables actions; it must handle these errors with `limitErrorOf()` from `src/lib/plans.ts`.
+- **New limited thing** → add a nullable column to `plan_limits` (NULL = unlimited) + a trigger/RLS check + UI via `usePlan().limits`. **New Pro-only feature** → a key in `plan_limits.features` (jsonb) checked with `hasFeature(limits, "key")` in UI *and* in the DB/Edge Function that does the work. Never trust the client for plan checks.
+- **Client:** `usePlan(userId)` = plan, subscription, limits (source of truth in UI). `src/lib/billing.ts` → `startProCheckout()`, `openBillingPortal()`. Upsell copy: "Nadgradi na Pro" with the `Sparkles` icon, amber styling.
+- **Stripe** runs only in Supabase Edge Functions (`supabase/functions/`): `create-checkout-session`, `create-portal-session` (JWT), `stripe-webhook` (no JWT, verifies Stripe signature). The webhook is the only writer of `profiles.plan` and subscription fields; `active`, `trialing`, `past_due` = Pro. Secrets (Supabase dashboard → Edge Functions → Secrets): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO`, optional `SITE_URL`, `ALLOWED_ORIGINS`. Never put a Stripe secret key in client code or `VITE_*`/`NEXT_PUBLIC_*`.
+- `profiles` is in Realtime, so a plan change after payment shows up without reload.
 
 ## Conventions
 

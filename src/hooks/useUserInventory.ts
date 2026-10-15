@@ -1,23 +1,36 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { limitErrorOf } from "../lib/plans";
 import type { UserInventoryPlant } from "../types/index";
+
+export type AddPlantResult = { ok: true } | { ok: false; reason: "limit" | "error" };
 
 export function useUserInventory(userId: string) {
   const [inventory, setInventory] = useState<UserInventoryPlant[]>([]);
+  // Koliko je posajenih na vrsto rastline v vseh vrtovih (za omejitev paketa)
+  const [plantedCounts, setPlantedCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
   const fetchInventory = useCallback(async () => {
     if (!userId) return;
-    const { data, error } = await supabase
-      .from("user_plants")
-      .select("*, plant:plants(*)")
-      .eq("user_id", userId)
-      .order("created_at");
-    if (error) {
-      console.error("useUserInventory error:", error);
+    const [inv, planted] = await Promise.all([
+      supabase
+        .from("user_plants")
+        .select("*, plant:plants(*)")
+        .eq("user_id", userId)
+        .order("created_at"),
+      supabase.from("bed_plants").select("plant_id, quantity").eq("user_id", userId),
+    ]);
+    if (inv.error) {
+      console.error("useUserInventory error:", inv.error);
       return;
     }
-    setInventory(data ?? []);
+    if (planted.error) console.error("useUserInventory planted error:", planted.error);
+    setInventory(inv.data ?? []);
+    const counts: Record<string, number> = {};
+    for (const row of planted.data ?? [])
+      counts[row.plant_id] = (counts[row.plant_id] ?? 0) + (row.quantity ?? 1);
+    setPlantedCounts(counts);
     setLoading(false);
   }, [userId]);
 
@@ -25,36 +38,41 @@ export function useUserInventory(userId: string) {
     fetchInventory();
   }, [fetchInventory]);
 
-  const addPlant = async (plantId: string, quantity: number = 1) => {
+  // Inventar + posajeno — to šteje omejitev max_per_plant
+  const totalFor = (plantId: string) =>
+    (inventory.find((i) => i.plant_id === plantId)?.quantity ?? 0) +
+    (plantedCounts[plantId] ?? 0);
+
+  const addPlant = async (
+    plantId: string,
+    quantity: number = 1,
+  ): Promise<AddPlantResult> => {
     // Preveri ali že obstaja v inventarju
     const existing = inventory.find((i) => i.plant_id === plantId);
 
-    if (existing) {
-      // Prištej količino
-      const newQuantity = existing.quantity + quantity;
-      const { data, error } = await supabase
-        .from("user_plants")
-        .update({ quantity: newQuantity })
-        .eq("id", existing.id)
-        .select("*, plant:plants(*)")
-        .single();
+    const { data, error } = existing
+      ? await supabase
+          .from("user_plants")
+          .update({ quantity: existing.quantity + quantity })
+          .eq("id", existing.id)
+          .select("*, plant:plants(*)")
+          .single()
+      : await supabase
+          .from("user_plants")
+          .insert({ user_id: userId, plant_id: plantId, quantity })
+          .select("*, plant:plants(*)")
+          .single();
 
-      console.log("updatePlant error:", error);
-      if (data)
-        setInventory((prev) =>
-          prev.map((i) => (i.id === existing.id ? data : i)),
-        );
-    } else {
-      // Dodaj novo
-      const { data, error } = await supabase
-        .from("user_plants")
-        .insert({ user_id: userId, plant_id: plantId, quantity })
-        .select("*, plant:plants(*)")
-        .single();
-
-      console.log("insertPlant error:", error);
-      if (data) setInventory((prev) => [...prev, data]);
+    if (error || !data) {
+      if (limitErrorOf(error) === "plant_limit_reached")
+        return { ok: false, reason: "limit" };
+      console.error("addPlant error:", error);
+      return { ok: false, reason: "error" };
     }
+    setInventory((prev) =>
+      existing ? prev.map((i) => (i.id === existing.id ? data : i)) : [...prev, data],
+    );
+    return { ok: true };
   };
 
   const removePlant = async (userPlantId: string) => {
@@ -118,6 +136,7 @@ export function useUserInventory(userId: string) {
     removePlant,
     decrementPlant,
     consumePlant,
+    totalFor,
     refresh: fetchInventory,
   };
 }

@@ -8,6 +8,8 @@ import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useUserInventory } from "../hooks/useUserInventory";
 import { useGardens } from "../hooks/useGardens";
 import { useRealtimeSync } from "../hooks/useRealtimeSync";
+import { usePlan } from "../hooks/usePlan";
+import { startProCheckout, openBillingPortal } from "../lib/billing";
 import { SideMenu } from "../components/SideMenu";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
@@ -52,10 +54,12 @@ const GardenPage: React.FC = () => {
     removePlant,
     decrementPlant,
     consumePlant,
+    totalFor,
     refresh: refreshInventory,
   } = useUserInventory(userId ?? "");
 
-  const gardensApi = useGardens(userId);
+  const planApi = usePlan(userId);
+  const gardensApi = useGardens(userId, planApi.limits?.max_gardens ?? null);
   const gardenId = gardensApi.currentGardenId;
   const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -152,10 +156,29 @@ const GardenPage: React.FC = () => {
       refetchBeds();
       gardensApi.refresh(); // število gredic v meniju
     },
-    bed_plants: () => refreshBedPlants(),
+    bed_plants: () => {
+      refreshBedPlants();
+      refreshInventory(); // posajeno šteje v omejitev na rastlino
+    },
     user_plants: () => refreshInventory(),
     user_settings: () => refreshSettings(),
+    profiles: () => planApi.refresh(), // paket se spremeni po Stripe webhooku
   });
+
+  // Vrnitev iz Stripe Checkout (?checkout=success|cancel): osveži paket, počisti URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("checkout")) return;
+    planApi.refresh();
+    params.delete("checkout");
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + (query ? `?${query}` : ""),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex flex-col h-screen bg-stone-50 select-none">
@@ -184,8 +207,10 @@ const GardenPage: React.FC = () => {
         onClose={() => setMenuOpen(false)}
         gardens={gardensApi.gardens}
         currentGardenId={gardenId}
-        plan={gardensApi.plan}
-        maxGardens={gardensApi.maxGardens}
+        plan={planApi.plan}
+        onUpgrade={startProCheckout}
+        onManageBilling={openBillingPortal}
+        maxGardens={planApi.limits?.max_gardens ?? null}
         atLimit={gardensApi.atLimit}
         onSelectGarden={gardensApi.selectGarden}
         onCreateGarden={gardensApi.createGarden}
@@ -320,6 +345,11 @@ const GardenPage: React.FC = () => {
         onClose={() => setAddPlantsOpen(false)}
         inventory={inventory}
         onAdd={addPlant}
+        maxPerPlant={planApi.limits?.max_per_plant ?? null}
+        totalFor={totalFor}
+        onUpgrade={() => {
+          startProCheckout().catch(() => {});
+        }}
         onRemove={removePlant}
       />
 
