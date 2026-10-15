@@ -13,6 +13,9 @@ const BED_COLORS = [
 
 interface GardenStore {
   beds: GardenBed[];
+  // Poveča se ob vsaki lokalni spremembi gredic. Refetch, ki se je začel pred
+  // spremembo, se zavrže — sicer bi star odgovor vrnil izbrisano/premaknjeno gredico.
+  bedsVersion: number;
   mode: AppMode;
   selectedBedId: string | null;
 
@@ -27,17 +30,23 @@ export const useGardenStore = create<GardenStore>()(
   persist(
     (set) => ({
       beds: [],
+      bedsVersion: 0,
       mode: "pan",
       selectedBedId: null,
 
       setMode: (mode) => set({ mode }),
-      addBed: (bed) => set((s) => ({ beds: [...s.beds, bed] })),
+      addBed: (bed) =>
+        set((s) => ({ beds: [...s.beds, bed], bedsVersion: s.bedsVersion + 1 })),
       updateBed: (id, updates) =>
         set((s) => ({
           beds: s.beds.map((b) => (b.id === id ? { ...b, ...updates } : b)),
+          bedsVersion: s.bedsVersion + 1,
         })),
       removeBed: (id) =>
-        set((s) => ({ beds: s.beds.filter((b) => b.id !== id) })),
+        set((s) => ({
+          beds: s.beds.filter((b) => b.id !== id),
+          bedsVersion: s.bedsVersion + 1,
+        })),
       selectBed: (id) => set({ selectedBedId: id }),
     }),
     {

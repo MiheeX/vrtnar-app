@@ -135,9 +135,12 @@ const GardenPage: React.FC = () => {
   // Ponovno naloži gredice trenutnega vrta (brez čiščenja izbire)
   const gardenIdRef = useRef(gardenId);
   gardenIdRef.current = gardenId;
+  const bedsFetchSeq = useRef(0);
   const refetchBeds = async () => {
     const id = gardenId;
     if (!id) return;
+    const seq = ++bedsFetchSeq.current;
+    const versionAtStart = useGardenStore.getState().bedsVersion;
     const { data, error } = await supabase
       .from("beds")
       .select("*")
@@ -146,9 +149,19 @@ const GardenPage: React.FC = () => {
       console.error("Napaka pri nalaganju gredic:", error);
       return;
     }
-    // Medtem preklopljen vrt → ne prepiši gredic novega vrta
-    if (data && gardenIdRef.current === id)
-      useGardenStore.setState({ beds: data });
+    // Zavrzi zastarel odgovor:
+    // * medtem preklopljen vrt,
+    // * medtem začet novejši refetch,
+    // * medtem lokalna sprememba (brisanje, premik …) — njen Realtime dogodek
+    //   sproži nov refetch s pravilnimi podatki
+    if (
+      !data ||
+      gardenIdRef.current !== id ||
+      seq !== bedsFetchSeq.current ||
+      useGardenStore.getState().bedsVersion !== versionAtStart
+    )
+      return;
+    useGardenStore.setState({ beds: data });
   };
 
   // Spremembe z drugih naprav/zavihkov se pokažejo brez osvežitve strani
@@ -396,17 +409,19 @@ const GardenPage: React.FC = () => {
               </button>
               <button
                 onClick={async () => {
+                  // Optimistično: gredica izgine takoj, dialog se zapre (ni dvojnega klika)
+                  const bed = selectedBed;
+                  removeBed(bed.id);
+                  selectBed(null);
+                  setConfirmDeleteBed(false);
                   const { error } = await supabase
                     .from("beds")
                     .delete()
-                    .eq("id", selectedBed.id);
+                    .eq("id", bed.id);
                   if (error) {
                     console.error("Delete error:", error);
-                    return;
+                    useGardenStore.getState().addBed(bed); // vrni nazaj
                   }
-                  removeBed(selectedBed.id);
-                  selectBed(null);
-                  setConfirmDeleteBed(false);
                 }}
                 className="flex-1 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
               >

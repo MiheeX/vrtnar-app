@@ -143,6 +143,10 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const pendingDrawStart = useRef<{ col: number; row: number } | null>(null);
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Telefon po dotiku sproži še emulirane mouse dogodke (mousedown/mouseup).
+    // Te ignoriramo, sicer se akcija izvede dvakrat (dvojno shranjevanje, risanje ob tapu).
+    const lastTouchAt = useRef(0);
+    const isEmulatedMouse = () => Date.now() - lastTouchAt.current < 800;
     // Dotik, ki se je začel na rastlini (za tap in da canvas ne odpre context menija)
     const plantPressRef = useRef<{ startX: number; startY: number } | null>(
       null,
@@ -899,6 +903,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     // Wrapper za onTouchStart ki doda long press za context menu
     const onTouchStartWithLongPress = useCallback(
       (e: React.TouchEvent) => {
+        lastTouchAt.current = Date.now();
         // Zapri context menu ob kateremkoli novem touchu (razen klika na sam menu)
         if (contextMenu) {
           setContextMenu(null);
@@ -1058,6 +1063,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     // Zaključi touch — shrani gredico ali zaključi drag rastline
     const onTouchEnd = useCallback(
       (e: React.TouchEvent) => {
+        lastTouchAt.current = Date.now();
         clearLongPress();
         if (e.touches.length === 0) plantPressRef.current = null;
         pendingDrawStart.current = null;
@@ -1120,7 +1126,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     // Začne mouse interakcijo — panning, risanje gredice ali resize
     const onMouseDown = useCallback(
       (e: React.MouseEvent) => {
-        if (e.button === 2) return;
+        if (e.button === 2 || isEmulatedMouse()) return;
 
         // Zapri context menu ob kateremkoli kliku in ne nadaljuj z interakcijo
         if (contextMenu) {
@@ -1284,6 +1290,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     // Zaključi mouse interakcijo — shrani gredico ali zaključi drag rastline
     const onMouseUp = useCallback(() => {
+      if (isEmulatedMouse()) return;
       if (interaction.type === "movingPlant") {
         commitPlantDrop(interaction);
         return;
@@ -1325,6 +1332,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     // Window-level mouseup/touchend za drop ko je miška izven elementa
     useEffect(() => {
       const handleMouseUp = () => {
+        if (isEmulatedMouse()) return;
         if (interaction.type === "movingPlant") commitPlantDrop(interaction);
       };
       window.addEventListener("mouseup", handleMouseUp);
@@ -1671,7 +1679,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                       {/* Zasedeno območje — klikabilno za cel spacing kvadrant */}
                       <div
                         onMouseDown={(e) => {
-                          if (e.button !== 0 || mode !== "pan") return;
+                          if (e.button !== 0 || mode !== "pan" || isEmulatedMouse())
+                            return;
                           e.stopPropagation();
                           suppressPlantClickRef.current = false;
                           if (contextMenu) setContextMenu(null);
@@ -2060,17 +2069,20 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                 </button>
                 <button
                   onClick={async () => {
+                    // Optimistično: gredica izgine takoj, dialog se zapre (ni dvojnega klika)
+                    const bed = beds.find((b) => b.id === confirmDeleteBedId);
+                    if (!bed) return;
+                    removeBed(bed.id);
+                    selectBed(null);
+                    setConfirmDeleteBedId(null);
                     const { error } = await supabase
                       .from("beds")
                       .delete()
-                      .eq("id", confirmDeleteBedId);
+                      .eq("id", bed.id);
                     if (error) {
                       console.error("Delete error:", error);
-                      return;
+                      addBed(bed); // vrni nazaj, če brisanje ni uspelo
                     }
-                    removeBed(confirmDeleteBedId);
-                    selectBed(null);
-                    setConfirmDeleteBedId(null);
                   }}
                   style={{
                     padding: "8px 18px",
