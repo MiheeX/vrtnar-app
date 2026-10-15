@@ -1,0 +1,10 @@
+# Nastavitve Edge Functions (za Supabase CLI deploy). Stripe ne pošlje Supabase JWT,
+# zato webhook preverja Stripe podpis namesto JWT.
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.create-checkout-session]
+verify_jwt = true
+
+[functions.create-portal-session]
+verify_jwt = true

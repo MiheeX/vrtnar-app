@@ -3,16 +3,19 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
   LogOut,
   MoreHorizontal,
   Pencil,
   Plus,
   Settings,
+  Sparkles,
   Sprout,
   Trash2,
   X,
 } from "lucide-react";
 import type { GardenSummary } from "../hooks/useGardens";
+import { PLAN_LABEL, type Plan } from "../lib/plans";
 
 type Level = "main" | "gardens" | "settings";
 type SubLevel = Exclude<Level, "main">;
@@ -22,7 +25,10 @@ interface Props {
   onClose: () => void;
   gardens: GardenSummary[];
   currentGardenId: string | null;
-  plan: "free" | "premium";
+  plan: Plan;
+  // Nadgradnja / upravljanje naročnine (Stripe); vrže napako, če plačila niso nastavljena
+  onUpgrade: () => Promise<void>;
+  onManageBilling: () => Promise<void>;
   maxGardens: number | null;
   atLimit: boolean;
   onSelectGarden: (id: string) => void;
@@ -82,6 +88,8 @@ export function SideMenu({
   gardens,
   currentGardenId,
   plan,
+  onUpgrade,
+  onManageBilling,
   maxGardens,
   atLimit,
   onSelectGarden,
@@ -107,6 +115,21 @@ export function SideMenu({
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
+
+  // Preusmeritev na Stripe; ob uspehu stran zapusti aplikacijo
+  const handleBilling = async (action: () => Promise<void>) => {
+    if (billingBusy) return;
+    setBillingBusy(true);
+    setBillingError(null);
+    try {
+      await action();
+    } catch {
+      setBillingError("Plačila trenutno niso na voljo. Poskusi kasneje.");
+      setBillingBusy(false);
+    }
+  };
 
   const resetGardenEditing = () => {
     setActionsId(null);
@@ -271,6 +294,39 @@ export function SideMenu({
         <span className="flex-1 text-[15px] text-stone-800">Nastavitve</span>
         <ChevronRight size={18} className="text-stone-300 shrink-0" />
       </button>
+
+      {/* Naročnina */}
+      <div className="mt-2 pt-2 border-t border-stone-100">
+        {plan === "pro" ? (
+          <button
+            onClick={() => handleBilling(onManageBilling)}
+            disabled={billingBusy}
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left active:bg-stone-100 disabled:opacity-50"
+          >
+            <CreditCard size={20} className="text-stone-500 shrink-0" />
+            <span className="flex-1 text-[15px] text-stone-800">Naročnina Pro</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => handleBilling(onUpgrade)}
+            disabled={billingBusy}
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left bg-amber-50 active:bg-amber-100 disabled:opacity-50"
+          >
+            <Sparkles size={20} className="text-amber-600 shrink-0" />
+            <span className="flex-1 min-w-0">
+              <span className="block text-[15px] font-semibold text-amber-800">
+                Nadgradi na Pro
+              </span>
+              <span className="block text-xs text-amber-700">
+                Več vrtov in rastlin
+              </span>
+            </span>
+          </button>
+        )}
+        {billingError && (
+          <p className="px-3 pt-1 text-xs text-red-500">{billingError}</p>
+        )}
+      </div>
     </div>
   );
 
@@ -279,8 +335,7 @@ export function SideMenu({
     <>
       {maxGardens !== null && (
         <p className="px-4 pt-3 text-xs text-stone-400">
-          {gardens.length} / {maxGardens} vrtov · paket{" "}
-          {plan === "premium" ? "Premium" : "Free"}
+          {gardens.length} / {maxGardens} vrtov · paket {PLAN_LABEL[plan]}
         </p>
       )}
 
@@ -452,10 +507,21 @@ export function SideMenu({
           </button>
         )}
         {atLimit && !creating && (
-          <p className="text-xs text-stone-400 mt-2 text-center">
-            Paket {plan === "premium" ? "Premium" : "Free"} omogoča največ{" "}
-            {maxGardens} vrtov.
-          </p>
+          <div className="mt-2 text-center">
+            <p className="text-xs text-stone-400">
+              Paket {PLAN_LABEL[plan]} omogoča največ {maxGardens}{" "}
+              {maxGardens === 1 ? "vrt" : "vrtov"}.
+            </p>
+            {plan === "free" && (
+              <button
+                onClick={() => handleBilling(onUpgrade)}
+                disabled={billingBusy}
+                className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700 disabled:opacity-50"
+              >
+                <Sparkles size={12} /> Nadgradi na Pro za več vrtov
+              </button>
+            )}
+          </div>
         )}
         {message && (
           <p className="text-xs text-red-500 mt-2 text-center">{message}</p>
@@ -539,12 +605,12 @@ export function SideMenu({
               <span className="font-bold text-green-700 text-lg">Vrtnar</span>
               <span
                 className={`ml-1 px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wide ${
-                  plan === "premium"
+                  plan === "pro"
                     ? "bg-amber-100 text-amber-700"
                     : "bg-stone-100 text-stone-500"
                 }`}
               >
-                {plan === "premium" ? "Premium" : "Free"}
+                {PLAN_LABEL[plan]}
               </span>
             </div>
           )}
