@@ -91,6 +91,7 @@ interface Gesture {
   startLy?: number;
   grabOffsetX?: number; // vlečenje rastline (canvas px)
   grabOffsetY?: number;
+  moved?: boolean; // vlečenje rastline: prst se je že premaknil (ni več samo dolg pritisk)
 }
 
 interface BedEdit {
@@ -687,6 +688,11 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       } else if (g.kind === "resize") {
         resizeBed(g, e.clientX, e.clientY);
       } else if (g.kind === "plantDrag") {
+        // Ko rastlino dejansko premaknemo, meni dolgega pritiska ni več potreben
+        if (!g.moved && Math.hypot(e.clientX - g.startX, e.clientY - g.startY) >= TAP_SLOP) {
+          g.moved = true;
+          setContextMenu(null);
+        }
         moveDraggedPlant(g, e.clientX, e.clientY);
       }
     };
@@ -731,9 +737,11 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
       }
     };
 
-    // Desni klik na rastlino (namizje): info / odstrani
+    // Desni klik na rastlino (namizje) ali dolg pritisk (dotik): info / odstrani
     const onContextMenu = (e: React.MouseEvent) => {
       e.preventDefault();
+      // Dotik: brskalnik sproži contextmenu med vlečenjem — če rastlino že premikamo, menija ne pokaži
+      if (gesture.current?.kind === "plantDrag" && gesture.current.moved) return;
       const t = hitTest(e.clientX, e.clientY);
       if (t.type !== "plant") return;
       const { sx, sy } = toCanvas(e.clientX, e.clientY);
