@@ -64,8 +64,11 @@ export function useUserInventory(userId: string) {
           .single();
 
     if (error || !data) {
-      if (limitErrorOf(error) === "plant_limit_reached")
+      if (limitErrorOf(error) === "plant_limit_reached") {
+        // Lokalni seštevek je bil zastarel (npr. sajenje na drugi napravi) — uskladi
+        fetchInventory();
         return { ok: false, reason: "limit" };
+      }
       console.error("addPlant error:", error);
       return { ok: false, reason: "error" };
     }
