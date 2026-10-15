@@ -17,6 +17,21 @@ export function formatArea(widthCells: number, heightCells: number): string {
   return `${m2.toLocaleString("sl-SI", { maximumFractionDigits: 2 })} m²`;
 }
 
+// Realni razmik iz kataloga (ne odtis na platnu), npr. "50 × 70 cm" = v vrsti × med vrstami
+export function formatRealSpacing(plantCm?: number | null, rowCm?: number | null): string | null {
+  if (!plantCm && !rowCm) return null;
+  if (!rowCm) return `${plantCm} cm`;
+  if (!plantCm) return `${rowCm} cm`;
+  return `${plantCm} × ${rowCm} cm`;
+}
+
+// Globina setve, npr. "0,6 cm"; 0 = svetlobna kalivka
+export function formatDepth(cm?: number | null): string | null {
+  if (cm == null) return null;
+  if (cm === 0) return "na površje (kali na svetlobi)";
+  return `${Number(cm).toLocaleString("sl-SI", { maximumFractionDigits: 1 })} cm`;
+}
+
 function fmtM(cm: number) {
   return (cm / 100).toLocaleString("sl-SI", { maximumFractionDigits: 2 });
 }

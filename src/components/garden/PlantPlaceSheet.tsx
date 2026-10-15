@@ -4,6 +4,8 @@ import { usePlants } from "../../hooks/usePlants";
 import type { Plant, UserInventoryPlant } from "../../types/index";
 import { promptUpgrade } from "../../store/useUpgradePrompt";
 import { PlantIcon } from "../PlantIcon";
+import { nowAction } from "../../lib/season";
+import { formatRealSpacing } from "../../lib/units";
 
 interface Props {
   open: boolean;
@@ -44,7 +46,12 @@ function PlantPlaceSheetContent({
     .filter((p) =>
       `${p.name} ${p.latin_name ?? ""}`.toLowerCase().includes(query.toLowerCase()),
     )
-    .sort((a, b) => Number(qty(b.id) > 0) - Number(qty(a.id) > 0));
+    // Najprej rastline iz zaloge, nato tiste, ki jih je ta mesec čas saditi/sejati
+    .sort(
+      (a, b) =>
+        Number(qty(b.id) > 0) - Number(qty(a.id) > 0) ||
+        Number(!!nowAction(b)) - Number(!!nowAction(a)),
+    );
   const emptyInventory = inventoryOnly && !loading && !inventory.some((i) => i.quantity > 0);
 
   const pick = (plant: Plant) => {
@@ -118,10 +125,21 @@ function PlantPlaceSheetContent({
               >
                 <span className="w-10 flex justify-center"><PlantIcon icon={plant.icon} emoji={plant.img} size={34} title={plant.name} /></span>
                 <span className="flex-1 min-w-0">
-                  <span className="block font-medium text-stone-800">{plant.name}</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="font-medium text-stone-800">{plant.name}</span>
+                    {nowAction(plant) && (
+                      <span className="px-1.5 py-0.5 rounded-md bg-green-50 text-green-700 text-[10px] font-semibold">
+                        {nowAction(plant)}
+                      </span>
+                    )}
+                  </span>
                   <span className="block text-xs text-stone-400">
-                    {plant.cells_spacing} × {plant.cells_spacing} polj
-                    {maxPerPlant != null && ` · ${total} / ${maxPerPlant}`}
+                    {[
+                      formatRealSpacing(plant.plant_spacing_cm, plant.row_spacing_cm),
+                      maxPerPlant != null ? `${total} / ${maxPerPlant}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                 </span>
                 {inStock > 0 ? (

@@ -12,15 +12,38 @@ export interface BedPlant {
   planted_at: string | null;
   last_watered_at: string | null;
   notes: string | null;
-  plant: {
-    id: string;
-    name: string;
-    img: string | null;
-    icon?: string | null;
-    cells_spacing: number;
-    around_cells_spacing: number;
-  } | null;
+  plant: BedPlantPlant | null;
 }
+
+// Podatki iz kataloga, ki jih potrebujeta platno in list rastline
+export interface BedPlantPlant {
+  id: string;
+  name: string;
+  img: string | null;
+  icon?: string | null;
+  cells_spacing: number;
+  around_cells_spacing: number;
+  family?: string | null;
+  description?: string | null;
+  water_need?: number | null;
+  sun_need?: number | null;
+  watering_interval_days?: number | null;
+  days_to_harvest_min?: number | null;
+  days_to_harvest_max?: number | null;
+  sow_indoors?: number[];
+  sow_outdoors?: number[];
+  transplant?: number[];
+  harvest?: number[];
+  row_spacing_cm?: number | null;
+  plant_spacing_cm?: number | null;
+  sow_depth_cm?: number | null;
+  germination_days_min?: number | null;
+  germination_days_max?: number | null;
+  germination_temp_min_c?: number | null;
+}
+
+const PLANT_FIELDS =
+  "id, name, img, icon, cells_spacing, around_cells_spacing, family, description, water_need, sun_need, watering_interval_days, days_to_harvest_min, days_to_harvest_max, sow_indoors, sow_outdoors, transplant, harvest, row_spacing_cm, plant_spacing_cm, sow_depth_cm, germination_days_min, germination_days_max, germination_temp_min_c";
 
 export function useBedPlants(gardenId: string) {
   const [bedPlants, setBedPlants] = useState<BedPlant[]>([]);
@@ -46,9 +69,7 @@ export function useBedPlants(gardenId: string) {
     if (!gardenId) return;
     const { data, error } = await supabase
       .from("bed_plants")
-      .select(
-        "*, plant:plants(id, name, img, icon, cells_spacing, around_cells_spacing)",
-      )
+      .select(`*, plant:plants(${PLANT_FIELDS})`)
       .eq("garden_id", gardenId);
     if (error) {
       console.error("useBedPlants error:", error);

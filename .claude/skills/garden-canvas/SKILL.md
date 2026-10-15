@@ -17,7 +17,7 @@ description: How GardenCanvas.tsx works — coordinates, the modeless pointer-ev
 
 ## Coordinates
 
-- `CELL = 48` px, `SUBCELL = 24` px, board `COLS × ROWS = 20 × 20` cells. Real scale: `CM_PER_CELL` in `src/lib/units.ts` (`formatBedSize`, `formatArea`).
+- `CELL = 48` px, `SUBCELL = 24` px, board `COLS × ROWS = 20 × 20` cells. Real scale: `CM_PER_CELL` in `src/lib/units.ts` (`formatBedSize`, `formatArea`, `formatSpacing`).
 - `GardenBed.x/y/width/height` = cells. `bed_plants.cell_x/cell_y` = sub-cells **relative to the bed**.
 - Screen → canvas: `toCanvas()` uses `panRef`/`zoomRef`. Fresh data in handlers: `useGardenStore.getState()`, `bedPlantsRef`, `placingRef`, `relationsRef` (synced in `useLayoutEffect`, never written during render).
 

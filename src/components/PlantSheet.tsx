@@ -4,6 +4,8 @@ import type { BedPlant } from "../hooks/useBedPlants";
 import type { PlantNeighbor } from "../types";
 import { supabase } from "../lib/supabaseClient";
 import { PlantIcon } from "./PlantIcon";
+import { PlantCalendar } from "./PlantCalendar";
+import { formatDepth } from "../lib/units";
 
 // Bottom sheet za rastlino z dvema položajema (kot Google Maps):
 // "peek" = mali povzetek na dnu, "full" = podrobnosti čez skoraj cel zaslon.
@@ -33,6 +35,20 @@ const ANIM_MS = 300;
 const FLICK_VELOCITY = 0.5;
 // Premik prsta (px), preden se odločimo med vlečenjem sheeta in scrollom
 const DRAG_SLOP = 6;
+
+const SUN_LABEL: Record<number, string> = { 1: "Polsenca", 2: "Delno sonce", 3: "Polno sonce" };
+const WATER_LABEL: Record<number, string> = { 1: "Malo", 2: "Zmerno", 3: "Veliko" };
+
+function Fact({ label, value, icon }: { label: string; value: string; icon: string }) {
+  return (
+    <div className="p-2.5 rounded-xl border border-stone-200 bg-stone-50">
+      <p className="text-[11px] text-stone-400">
+        {icon} {label}
+      </p>
+      <p className="text-sm font-medium text-stone-700 mt-0.5">{value}</p>
+    </div>
+  );
+}
 
 function formatDate(dateStr: string | null, empty: string): string {
   if (!dateStr) return empty;
@@ -547,28 +563,79 @@ function PlantSheetInner({
               </div>
             )}
 
-            {/* Dimenzije */}
-            <div className="flex flex-col gap-2 pb-4">
-              <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide">
-                Prostorske zahteve
-              </p>
-              <div className="flex gap-2">
-                <div className="flex-1 p-3 rounded-xl border border-stone-200 bg-stone-50 text-center">
-                  <p className="text-lg font-bold text-stone-700">
-                    {plant?.cells_spacing}
-                  </p>
-                  <p className="text-xs text-stone-400 mt-0.5">
-                    Velikost (cel.)
-                  </p>
+            {/* O rastlini: opis, potrebe, koledar, prostor */}
+            {plant && (
+              <div className="flex flex-col gap-3 pb-4">
+                <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide">
+                  O rastlini
+                </p>
+                {plant.description && (
+                  <p className="text-sm text-stone-600 leading-snug">{plant.description}</p>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <Fact label="Sonce" value={SUN_LABEL[plant.sun_need ?? 0] ?? "—"} icon="☀️" />
+                  <Fact
+                    label="Voda"
+                    value={
+                      plant.watering_interval_days
+                        ? `${WATER_LABEL[plant.water_need ?? 0] ?? ""} · na ${plant.watering_interval_days} dni`
+                        : (WATER_LABEL[plant.water_need ?? 0] ?? "—")
+                    }
+                    icon="💧"
+                  />
+                  <Fact
+                    label="Do pobiranja"
+                    value={
+                      plant.days_to_harvest_min
+                        ? `${plant.days_to_harvest_min}–${plant.days_to_harvest_max ?? plant.days_to_harvest_min} dni`
+                        : "—"
+                    }
+                    icon="⏱️"
+                  />
+                  <Fact
+                    label="V vrsti"
+                    value={plant.plant_spacing_cm ? `${plant.plant_spacing_cm} cm` : "—"}
+                    icon="📏"
+                  />
+                  <Fact
+                    label="Med vrstami"
+                    value={plant.row_spacing_cm ? `${plant.row_spacing_cm} cm` : "—"}
+                    icon="↔️"
+                  />
+                  <Fact
+                    label="Globina setve"
+                    value={formatDepth(plant.sow_depth_cm) ?? "—"}
+                    icon="🌰"
+                  />
+                  <Fact
+                    label="Vznik"
+                    value={
+                      plant.germination_days_min
+                        ? `${plant.germination_days_min}–${plant.germination_days_max ?? plant.germination_days_min} dni${
+                            plant.germination_temp_min_c != null ? ` · tla od ${plant.germination_temp_min_c} °C` : ""
+                          }`
+                        : "—"
+                    }
+                    icon="🌱"
+                  />
                 </div>
-                <div className="flex-1 p-3 rounded-xl border border-stone-200 bg-stone-50 text-center">
-                  <p className="text-lg font-bold text-stone-700">
-                    {plant?.around_cells_spacing}
+                {plant.family && (
+                  <p className="text-xs text-stone-500">
+                    Družina: <span className="font-medium text-stone-700">{plant.family}</span>
+                    {" "}— ne sadi je na isto mesto več let zapored.
                   </p>
-                  <p className="text-xs text-stone-400 mt-0.5">Odmik (cel.)</p>
+                )}
+                <div className="p-3 rounded-xl border border-stone-200 bg-stone-50">
+                  <p className="text-xs text-stone-400 mb-2">Setveni koledar</p>
+                  <PlantCalendar plant={plant} />
                 </div>
+                <p className="text-[11px] text-stone-400 leading-snug">
+                  Viri: M. Pušenjak (KGZS), Cornell in Colorado State University Extension, KIS.
+                  Sosedje: BUND, M. Pušenjak, poljski poskusi. Na platnu je razmik poenostavljen;
+                  natančne vrednosti so odvisne od sorte.
+                </p>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

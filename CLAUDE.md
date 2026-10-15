@@ -6,7 +6,7 @@ UI text and most code comments are in **Slovenian**. Comments may be Slovenian o
 
 ## Product direction (early stage — details still open)
 
-- **A planning tool for a real garden, not a game.** One grid cell = **~10 cm**. Spacing and neighbor rules simulate how plants really sit next to each other.
+- **A planning tool for a real garden, not a game.** One grid cell = **~10 cm** (`CM_PER_CELL` in `src/lib/units.ts`). Spacing and neighbor rules simulate how plants really sit next to each other.
 - **Public product**, web app first, online only (no offline mode for now). Languages: Slovenian and English.
 - **Several gardens per user.** `useGardens` lists them, the burger `SideMenu` switches/creates/renames/deletes; the last opened garden is remembered per device in `localStorage`. The garden count is limited per plan (`plan_limits.max_gardens`), enforced by the `gardens_enforce_limit` trigger.
 - **Inventory = plants the user plans to plant**, added from the shared plant catalog. Planting a plant uses one from the inventory, and removing it from a bed returns it.
@@ -73,8 +73,8 @@ src/
 | `plan_limits` | plan (`free`/`pro`) PK, max_gardens, max_per_plant (NULL = unlimited), features jsonb — limits as data, read-only for clients |
 | `beds` | id, user_id, garden_id, name, x, y, width, height, color — **units: grid cells** |
 | `bed_plants` | id, user_id, garden_id, bed_id, plant_id, cell_x, cell_y, quantity, variety, planted_at, last_watered_at, notes — **cell_x/y in sub-cells** |
-| `plants` | catalog: id, name, latin_name, img (emoji), icon (key of a custom SVG in `PlantIcon.tsx`, wins over img), cells_spacing, around_cells_spacing. Always render plants with `<PlantIcon icon emoji />` (custom SVG or Twemoji image), never the raw emoji |
-| `plant_neighbors` | plant_id, neighbor_id, relationship `"good" \| "bad"` (symmetric — check both directions) |
+| `plants` | catalog: id, name, latin_name, img (emoji), icon (key of a custom SVG in `PlantIcon.tsx`, wins over img), cells_spacing, around_cells_spacing (canvas footprint in sub-cells — a simplification, not real spacing), row_spacing_cm / plant_spacing_cm / sow_depth_cm / germination_days_min/max / germination_temp_min_c (**real data from sources**, listed in the migration; shown in the UI), family, description, water_need / sun_need (1–3), watering_interval_days, days_to_harvest_min/max, sow_indoors / sow_outdoors / transplant / harvest (`smallint[]` of months 1–12, Slovenian climate; helpers in `src/lib/season.ts`). days_to_harvest counts from planting into the bed (or direct sowing). Catalog data must be real and sourced; note sources in the migration. Always render plants with `<PlantIcon icon emoji />` (custom SVG or Twemoji image), never the raw emoji |
+| `plant_neighbors` | plant_id, neighbor_id, relationship `"good" \| "bad"` (symmetric — check both directions; one row per pair), sources (text[], e.g. BUND, Pušenjak) — built from sources, rule and conflicts documented in `20261016140000_plant_neighbors_sourced.sql` |
 | `user_plants` | inventory: user_id, plant_id, quantity |
 | `user_settings` | user_id (unique), show_sub_grid, allow_bad_neighbor_drop, plant_from_inventory (planting only from inventory, each plant uses one) |
 | `profiles` | plan (`free`/`pro`), stripe_customer_id, stripe_subscription_id, subscription_status, current_period_end, cancel_at_period_end — written only by the `stripe-webhook` Edge Function. Clients may only update username, full_name, avatar_url (column grants) |
