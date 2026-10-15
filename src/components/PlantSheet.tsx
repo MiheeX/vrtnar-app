@@ -3,6 +3,7 @@ import { X, Droplets, Trash2 } from "lucide-react";
 import type { BedPlant } from "../hooks/useBedPlants";
 import type { PlantNeighbor } from "../types";
 import { supabase } from "../lib/supabaseClient";
+import { PlantIcon } from "./PlantIcon";
 
 // Bottom sheet za rastlino z dvema položajema (kot Google Maps):
 // "peek" = mali povzetek na dnu, "full" = podrobnosti čez skoraj cel zaslon.
@@ -372,7 +373,7 @@ function PlantSheetInner({
 
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
-                <span className="text-3xl">{plant?.img}</span>
+                <PlantIcon icon={plant?.icon} emoji={plant?.img} size={36} title={plant?.name} />
                 <div>
                   <p className="font-semibold text-stone-800 text-lg leading-tight">
                     {plant?.name}
@@ -520,7 +521,7 @@ function PlantSheetInner({
                           key={p.id}
                           className="flex items-center gap-1 px-2 py-1 bg-white rounded-lg text-xs text-stone-700 border border-green-200"
                         >
-                          {p.img} {p.name}
+                          <PlantIcon icon={p.icon} emoji={p.img} size={16} /> {p.name}
                         </span>
                       ))}
                     </div>
@@ -537,7 +538,7 @@ function PlantSheetInner({
                           key={p.id}
                           className="flex items-center gap-1 px-2 py-1 bg-white rounded-lg text-xs text-stone-700 border border-red-200"
                         >
-                          {p.img} {p.name}
+                          <PlantIcon icon={p.icon} emoji={p.img} size={16} /> {p.name}
                         </span>
                       ))}
                     </div>

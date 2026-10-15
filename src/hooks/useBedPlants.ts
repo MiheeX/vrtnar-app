@@ -16,6 +16,7 @@ export interface BedPlant {
     id: string;
     name: string;
     img: string | null;
+    icon?: string | null;
     cells_spacing: number;
     around_cells_spacing: number;
   } | null;
@@ -46,7 +47,7 @@ export function useBedPlants(gardenId: string) {
     const { data, error } = await supabase
       .from("bed_plants")
       .select(
-        "*, plant:plants(id, name, img, cells_spacing, around_cells_spacing)",
+        "*, plant:plants(id, name, img, icon, cells_spacing, around_cells_spacing)",
       )
       .eq("garden_id", gardenId);
     if (error) {

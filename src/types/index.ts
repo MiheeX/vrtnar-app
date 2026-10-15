@@ -21,7 +21,8 @@ export interface Plant {
   id: string;
   name: string;
   latin_name: string | null;
-  img: string | null;
+  img: string | null; // emoji (prikaže se kot Twemoji slika)
+  icon: string | null; // ključ lastne ikone v PlantIcon (ima prednost pred img)
   cells_spacing: number; // koliko celic zasede rastlina
   around_cells_spacing: number; // varnostni pas okoli (collision)
   created_at: string;

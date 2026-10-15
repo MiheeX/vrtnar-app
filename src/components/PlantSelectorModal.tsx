@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X, Plus, Minus, Trash2, Sparkles, AlertTriangle } from "lucide-react";
 import { usePlants } from "../hooks/usePlants";
+import { PlantIcon } from "./PlantIcon";
 import type { UserInventoryPlant } from "../types/index";
 import type { AddPlantResult } from "../hooks/useUserInventory";
 import { promptUpgrade } from "../store/useUpgradePrompt";
@@ -145,7 +146,7 @@ function PlantSelectorContent({
             }`}
           >
           <div className="flex items-center gap-3">
-            <span className="text-3xl">{plant.img}</span>
+            <PlantIcon icon={plant.icon} emoji={plant.img} size={36} title={plant.name} />
 
             <div className="flex-1">
               <p className="font-medium text-stone-800">{plant.name}</p>

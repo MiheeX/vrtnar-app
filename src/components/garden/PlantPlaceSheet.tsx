@@ -3,6 +3,7 @@ import { Search, Sparkles, X } from "lucide-react";
 import { usePlants } from "../../hooks/usePlants";
 import type { Plant, UserInventoryPlant } from "../../types/index";
 import { promptUpgrade } from "../../store/useUpgradePrompt";
+import { PlantIcon } from "../PlantIcon";
 
 interface Props {
   open: boolean;
@@ -115,7 +116,7 @@ function PlantPlaceSheetContent({
                 onClick={() => pick(plant)}
                 className="w-full flex items-center gap-3 px-2 py-3 rounded-xl text-left active:bg-green-50"
               >
-                <span className="text-3xl w-10 text-center">{plant.img}</span>
+                <span className="w-10 flex justify-center"><PlantIcon icon={plant.icon} emoji={plant.img} size={34} title={plant.name} /></span>
                 <span className="flex-1 min-w-0">
                   <span className="block font-medium text-stone-800">{plant.name}</span>
                   <span className="block text-xs text-stone-400">

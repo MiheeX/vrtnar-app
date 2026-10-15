@@ -1,5 +1,6 @@
 import type { PlacingPlant } from "./GardenCanvas";
 import { HEAT_COLOR } from "./placement";
+import { PlantIcon } from "../PlantIcon";
 
 interface Props {
   placing: PlacingPlant;
@@ -31,7 +32,7 @@ export function PlacementBar({
             className="flex items-center gap-2 min-w-0 flex-1 text-left rounded-xl active:bg-stone-50"
             aria-label="Zamenjaj rastlino"
           >
-            <span className="text-3xl">{placing.img}</span>
+            <PlantIcon icon={placing.icon} emoji={placing.img} size={36} title={placing.name} />
             <span className="min-w-0">
               <span className="block font-semibold text-stone-800 truncate">{placing.name}</span>
               <span className="block text-xs text-stone-500">

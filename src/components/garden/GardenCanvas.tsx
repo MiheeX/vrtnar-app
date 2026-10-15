@@ -16,6 +16,7 @@ import type { BedPlant } from "../../hooks/useBedPlants";
 import { formatBedSize } from "../../lib/units";
 import { notify, pushUndo } from "../../store/useUndo";
 import type { DragWarning } from "../StatusArea";
+import { PlantIcon } from "../PlantIcon";
 import {
   anchorFor,
   buildRelations,
@@ -43,6 +44,7 @@ export interface PlacingPlant {
   spacing: number;
   name: string;
   img: string | null;
+  icon: string | null;
 }
 
 interface Props {
@@ -1014,12 +1016,16 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            fontSize: 14,
                             transform: dragged ? "scale(1.25)" : "none",
                             filter: dragged ? "drop-shadow(0 3px 6px rgba(0,0,0,0.3))" : "none",
                           }}
                         >
-                          {bp.plant?.img}
+                          <PlantIcon
+                            icon={bp.plant?.icon}
+                            emoji={bp.plant?.img}
+                            size={19}
+                            title={bp.plant?.name}
+                          />
                         </div>
                       </div>
                     );

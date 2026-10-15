@@ -73,7 +73,7 @@ src/
 | `plan_limits` | plan (`free`/`pro`) PK, max_gardens, max_per_plant (NULL = unlimited), features jsonb — limits as data, read-only for clients |
 | `beds` | id, user_id, garden_id, name, x, y, width, height, color — **units: grid cells** |
 | `bed_plants` | id, user_id, garden_id, bed_id, plant_id, cell_x, cell_y, quantity, variety, planted_at, last_watered_at, notes — **cell_x/y in sub-cells** |
-| `plants` | catalog: id, name, latin_name, img (emoji), cells_spacing, around_cells_spacing |
+| `plants` | catalog: id, name, latin_name, img (emoji), icon (key of a custom SVG in `PlantIcon.tsx`, wins over img), cells_spacing, around_cells_spacing. Always render plants with `<PlantIcon icon emoji />` (custom SVG or Twemoji image), never the raw emoji |
 | `plant_neighbors` | plant_id, neighbor_id, relationship `"good" \| "bad"` (symmetric — check both directions) |
 | `user_plants` | inventory: user_id, plant_id, quantity |
 | `user_settings` | user_id (unique), show_sub_grid, allow_bad_neighbor_drop, plant_from_inventory (planting only from inventory, each plant uses one) |

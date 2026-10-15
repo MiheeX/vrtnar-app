@@ -581,6 +581,19 @@ export function SideMenu({
           label="Sadi iz zaloge"
         />
       </div>
+      {/* Navedba avtorjev za Twemoji ikone (licenca CC-BY 4.0) */}
+      <p className="pt-4 text-[11px] text-stone-400">
+        Ikone emojijev:{" "}
+        <a
+          href="https://github.com/jdecked/twemoji"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+        >
+          Twemoji
+        </a>{" "}
+        (CC-BY 4.0)
+      </p>
     </div>
   );
 

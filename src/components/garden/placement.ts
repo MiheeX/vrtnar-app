@@ -35,7 +35,8 @@ const overlap = (
   bx: number, by: number, bw: number,
 ) => ax < bx + bw && ax + aw > bx && ay < by + bw && ay + aw > by;
 
-const label = (bp: BedPlant) => `${bp.plant?.img ?? ""} ${bp.plant?.name ?? ""}`.trim();
+// Samo ime (emoji v besedilu se na starejših napravah lahko ne izriše)
+const label = (bp: BedPlant) => bp.plant?.name ?? "";
 
 export interface PlacementResult {
   status: CellStatus;
@@ -167,7 +168,7 @@ export function remainingCapacity(args: {
         planted_at: null,
         last_watered_at: null,
         notes: null,
-        plant: { id: args.plantId, name: "", img: null, cells_spacing: spacing, around_cells_spacing: 0 },
+        plant: { id: args.plantId, name: "", img: null, icon: null, cells_spacing: spacing, around_cells_spacing: 0 },
       });
       count++;
     }

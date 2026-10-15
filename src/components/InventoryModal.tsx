@@ -1,5 +1,6 @@
 import { X, Minus, Trash2 } from "lucide-react";
 import type { UserInventoryPlant } from "../types/index";
+import { PlantIcon } from "./PlantIcon";
 
 interface Props {
   open: boolean;
@@ -49,7 +50,7 @@ export function InventoryModal({
               key={item.id}
               className="flex items-center gap-3 p-3 rounded-xl border border-stone-200 bg-stone-50"
             >
-              <span className="text-3xl">{item.plant?.img}</span>
+              <PlantIcon icon={item.plant?.icon} emoji={item.plant?.img} size={36} title={item.plant?.name} />
               <div className="flex-1">
                 <p className="font-medium text-stone-800">{item.plant?.name}</p>
                 {item.plant?.latin_name && (

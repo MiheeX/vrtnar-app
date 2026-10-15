@@ -342,6 +342,7 @@ const GardenPage: React.FC = () => {
       spacing: plant.cells_spacing ?? 1,
       name: plant.name,
       img: plant.img ?? null,
+      icon: plant.icon ?? null,
     });
     setPlacedCount(0);
     setStockAtStart(
@@ -396,6 +397,7 @@ const GardenPage: React.FC = () => {
         id: pl.plantId,
         name: pl.name,
         img: pl.img,
+        icon: pl.icon,
         cells_spacing: pl.spacing,
         around_cells_spacing: 0,
       },
