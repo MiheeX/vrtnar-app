@@ -14,10 +14,9 @@ import { PlantPickerModal } from "../components/PlantPickerModal";
 import { useBedPlants } from "../hooks/useBedPlants";
 import { SettingsModal } from "../components/SettingsModal";
 import type { PlantNeighbor } from "../types";
-import { PlantInfoModal } from "../components/PlantInfoModal";
-import type { PlantInfoModalHandle } from "../components/PlantInfoModal";
 import { useUserSettings } from "../hooks/useUserSettings";
-import { PlantQuickInfo } from "../components/PlantQuickInfoModal";
+import { PlantSheet } from "../components/PlantSheet";
+import type { SheetSnap } from "../components/PlantSheet";
 
 const GardenPage: React.FC = () => {
   const {
@@ -72,11 +71,8 @@ const GardenPage: React.FC = () => {
     cellX: number;
     cellY: number;
   } | null>(null);
-  const [plantInfoTargetId, setPlantInfoTargetId] = useState<string | null>(
-    null,
-  );
-  const plantInfoTarget =
-    bedPlants.find((b) => b.id === plantInfoTargetId) ?? null;
+  // Položaj plant sheeta: mali povzetek ali podrobnosti
+  const [sheetSnap, setSheetSnap] = useState<SheetSnap>("peek");
 
   const [plantNeighbors, setPlantNeighbors] = useState<PlantNeighbor[]>([]);
 
@@ -84,7 +80,6 @@ const GardenPage: React.FC = () => {
   const allowBadNeighborDrop = settings.allow_bad_neighbor_drop;
   const [confirmDeleteBed, setConfirmDeleteBed] = useState(false);
 
-  const plantInfoModalRef = useRef<PlantInfoModalHandle>(null);
 
   useEffect(() => {
     supabase
@@ -157,37 +152,29 @@ const GardenPage: React.FC = () => {
           plantNeighbors={plantNeighbors}
           allowBadNeighborDrop={allowBadNeighborDrop}
           onPlantInfo={(bedPlantId) => {
-            setPlantInfoTargetId(bedPlantId);
+            setQuickInfoTargetId(bedPlantId);
+            setSheetSnap("full");
           }}
           onPlantQuickInfo={(bedPlantId) => {
             setQuickInfoTargetId(bedPlantId);
+            setSheetSnap("peek");
           }}
           onCloseBedPanel={() => selectBed(null)}
           activeQuickInfoId={quickInfoTargetId}
         />
       </div>
 
-      <PlantQuickInfo
+      <PlantSheet
         bedPlant={quickInfoTarget}
+        snap={sheetSnap}
+        onSnapChange={setSheetSnap}
         onClose={() => setQuickInfoTargetId(null)}
-        onSwipeStart={() => {
-          setPlantInfoTargetId(quickInfoTargetId);
-        }}
-        plantInfoModalRef={plantInfoModalRef}
-        onSwipeCommit={() => {
-          plantInfoModalRef.current?.commitOpen();
-          setQuickInfoTargetId(null);
-        }}
-        onSwipeCancel={(onDone) => {
-          plantInfoModalRef.current?.cancelOpen(() => {
-            setPlantInfoTargetId(null);
-            onDone();
-          });
-        }}
-        onOpenDetail={() => {
-          plantInfoModalRef.current?.commitOpen();
-          setPlantInfoTargetId(quickInfoTargetId);
-          setQuickInfoTargetId(null);
+        plantNeighbors={plantNeighbors}
+        allBedPlants={bedPlants}
+        onUpdated={refreshBedPlants}
+        onOptimisticUpdate={(field, value) => {
+          if (quickInfoTargetId)
+            applyOptimisticUpdate(quickInfoTargetId, { [field]: value });
         }}
       />
 
@@ -282,20 +269,6 @@ const GardenPage: React.FC = () => {
           plantNeighbors={plantNeighbors}
         />
       )}
-
-      <PlantInfoModal
-        ref={plantInfoModalRef}
-        open={!!plantInfoTarget}
-        onClose={() => setPlantInfoTargetId(null)}
-        bedPlant={plantInfoTarget}
-        plantNeighbors={plantNeighbors}
-        allBedPlants={bedPlants}
-        onUpdated={refreshBedPlants}
-        onOptimisticUpdate={(field, value) => {
-          if (plantInfoTargetId)
-            applyOptimisticUpdate(plantInfoTargetId, { [field]: value });
-        }}
-      />
 
       {/* Confirm delete*/}
       {confirmDeleteBed && selectedBed && (
