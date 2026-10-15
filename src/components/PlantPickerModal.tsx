@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, Check } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { limitErrorOf } from "../lib/plans";
@@ -61,7 +61,13 @@ const rectsOverlap = (
   bSize: number,
 ) => ax < bx + bSize && ax + aSize > bx && ay < by + bSize && ay + aSize > by;
 
-export function PlantPickerModal({
+// Vsebina se ob vsakem odprtju na novo vzpostavi (sveže iskanje in stanje)
+export function PlantPickerModal(props: Props) {
+  if (!props.open) return null;
+  return <PlantPickerContent {...props} />;
+}
+
+function PlantPickerContent({
   open,
   onClose,
   inventory,
@@ -75,12 +81,6 @@ export function PlantPickerModal({
   plantNeighbors,
 }: Props) {
   const [bedPlants, setBedPlants] = useState<BedPlant[]>([]);
-  const [badNeighborPlantIds, setBadNeighborPlantIds] = useState<Set<string>>(
-    new Set(),
-  );
-  const [goodNeighborPlantIds, setGoodNeighborPlantIds] = useState<Set<string>>(
-    new Set(),
-  );
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -90,10 +90,6 @@ export function PlantPickerModal({
       .toLowerCase()
       .includes(searchQuery.toLowerCase()),
   );
-
-  useEffect(() => {
-    if (!open) setSearchQuery("");
-  }, [open]);
 
   useEffect(() => {
     if (!open || !bedId) return;
@@ -183,13 +179,14 @@ export function PlantPickerModal({
   }, [bedPlants, cellX, cellY]);
   */
 
-  //Use form cache:
-  useEffect(() => {
-    if (bedPlants.length === 0) {
-      setBadNeighborPlantIds(new Set());
-      setGoodNeighborPlantIds(new Set());
-      return;
-    }
+  // Dobri/slabi sosedje za vsako rastlino iz inventarja — izpeljano iz že naloženih
+  // plantNeighbors (brez Supabase fetcha), zato useMemo namesto stanja
+  const { badNeighborPlantIds, goodNeighborPlantIds } = useMemo(() => {
+    const empty = {
+      badNeighborPlantIds: new Set<string>(),
+      goodNeighborPlantIds: new Set<string>(),
+    };
+    if (bedPlants.length === 0) return empty;
 
     const neighborPlantIds = [
       ...new Set(
@@ -208,13 +205,8 @@ export function PlantPickerModal({
       ),
     ];
 
-    if (neighborPlantIds.length === 0) {
-      setBadNeighborPlantIds(new Set());
-      setGoodNeighborPlantIds(new Set());
-      return;
-    }
+    if (neighborPlantIds.length === 0) return empty;
 
-    // Izračun iz že naloženih plantNeighbors — brez Supabase fetcha
     const badIds = new Set<string>();
     const goodIds = new Set<string>();
 
@@ -243,11 +235,8 @@ export function PlantPickerModal({
       // sicer - nevtralna (ni v nobeni množici)
     });
 
-    setBadNeighborPlantIds(badIds);
-    setGoodNeighborPlantIds(goodIds);
+    return { badNeighborPlantIds: badIds, goodNeighborPlantIds: goodIds };
   }, [bedPlants, cellX, cellY, plantNeighbors, inventory]);
-
-  if (!open) return null;
 
   const hasSpaceCollision = (cellsSpacing: number): boolean =>
     bedPlants.some((bp) =>

@@ -65,6 +65,7 @@ export function usePlan(userId: string | null) {
   }, [userId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- nalaganje iz Supabase; setState šele po await
     fetchPlan();
   }, [fetchPlan]);
 

@@ -5,6 +5,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
   useEffect,
+  useLayoutEffect,
 } from "react";
 import { useGardenStore, BED_COLORS } from "../../store/useGardenStore";
 import type { GardenBed, DraftBed, ResizeHandle } from "../../types/garden";
@@ -125,10 +126,14 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     const containerRef = useRef<HTMLDivElement>(null);
     const [pan, setPan] = useState({ x: 0, y: 0 });
     const [zoom, setZoom] = useState(1);
+    // Sveži pan/zoom za event callbacke. Gesta ref nastavi takoj (panRef.current = …),
+    // po renderju ga uskladimo s stanjem — pred naslednjim dogodkom (useLayoutEffect).
     const panRef = useRef({ x: 0, y: 0 });
     const zoomRef = useRef(1);
-    panRef.current = pan; //premikanje in start rastline glede na zoom canvasa
-    zoomRef.current = zoom; //premikanje in start rastline glede na zoom canvasa
+    useLayoutEffect(() => {
+      panRef.current = pan;
+      zoomRef.current = zoom;
+    }, [pan, zoom]);
     const [interaction, setInteraction] = useState<InteractionState>({
       type: "idle",
     });
@@ -181,9 +186,11 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
 
     // Ref za svež bedPlants znotraj event callbackov
     const bedPlantsRef = useRef(bedPlants);
-    bedPlantsRef.current = bedPlants;
     const plantNeighborsRef = useRef(plantNeighbors);
-    plantNeighborsRef.current = plantNeighbors;
+    useLayoutEffect(() => {
+      bedPlantsRef.current = bedPlants;
+      plantNeighborsRef.current = plantNeighbors;
+    }, [bedPlants, plantNeighbors]);
 
     useImperativeHandle(ref, () => ({
       reset: () => {
@@ -262,19 +269,22 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
     // ── Gredice: kolizija in sync ─────────────────────────────────────────
 
     // Preveri ali se nova gredica prekriva z obstoječimi
-    const hasCollision = (
-      norm: { x: number; y: number; width: number; height: number },
-      excludeId?: string,
-    ) =>
-      beds.some((bed) => {
-        if (excludeId && bed.id === excludeId) return false;
-        return (
-          norm.x < bed.x + bed.width &&
-          norm.x + norm.width > bed.x &&
-          norm.y < bed.y + bed.height &&
-          norm.y + norm.height > bed.y
-        );
-      });
+    const hasCollision = useCallback(
+      (
+        norm: { x: number; y: number; width: number; height: number },
+        excludeId?: string,
+      ) =>
+        beds.some((bed) => {
+          if (excludeId && bed.id === excludeId) return false;
+          return (
+            norm.x < bed.x + bed.width &&
+            norm.x + norm.width > bed.x &&
+            norm.y < bed.y + bed.height &&
+            norm.y + norm.height > bed.y
+          );
+        }),
+      [beds],
+    );
 
     // Preveri ali katera rastlina v gredici pade izven nove oblike gredice
     const hasPlantOutsideBed = (
@@ -776,6 +786,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         }
       },
       [
+        beds,
         onPlantsChanged,
         allowBadNeighborDrop,
         checkSpaceCollision,
@@ -999,8 +1010,10 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
             updateBed(interaction.bedId, { x: newShape.x, y: newShape.y });
         } else if (interaction.type === "resizing") {
           const rect = containerRef.current!.getBoundingClientRect();
-          const lx = (touch.clientX - rect.left - pan.x) / zoom;
-          const ly = (touch.clientY - rect.top - pan.y) / zoom;
+          const lx =
+            (touch.clientX - rect.left - panRef.current.x) / zoomRef.current;
+          const ly =
+            (touch.clientY - rect.top - panRef.current.y) / zoomRef.current;
           const dx = Math.round((lx - interaction.startX) / CELL);
           const dy = Math.round((ly - interaction.startY) / CELL);
           const o = interaction.original,
@@ -1037,6 +1050,8 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         clearLongPress,
         updatePlantDragPos,
         mode,
+        contextMenu,
+        hasCollision,
       ],
     );
 
@@ -1096,6 +1111,7 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         syncBedToSupabase,
         clearLongPress,
         commitPlantDrop,
+        hasCollision,
       ],
     );
 
@@ -1254,7 +1270,16 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
           }
         }
       },
-      [interaction, toCell, updateBed, pan, zoom, beds, updatePlantDragPos],
+      [
+        interaction,
+        toCell,
+        updateBed,
+        pan,
+        zoom,
+        beds,
+        updatePlantDragPos,
+        hasCollision,
+      ],
     );
 
     // Zaključi mouse interakcijo — shrani gredico ali zaključi drag rastline
@@ -1288,7 +1313,14 @@ const GardenCanvas = forwardRef<GardenCanvasHandle, Props>(
         setResizeCollision(false);
         setInteraction({ type: "idle" });
       }
-    }, [interaction, draft, beds, syncBedToSupabase, commitPlantDrop]);
+    }, [
+      interaction,
+      draft,
+      beds,
+      syncBedToSupabase,
+      commitPlantDrop,
+      hasCollision,
+    ]);
 
     // Window-level mouseup/touchend za drop ko je miška izven elementa
     useEffect(() => {

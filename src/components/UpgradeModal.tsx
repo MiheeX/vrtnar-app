@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Check, Sparkles, X } from "lucide-react";
 import { useUpgradePrompt, type UpgradeReason } from "../store/useUpgradePrompt";
 import type { PlanLimits } from "../lib/plans";
@@ -28,18 +28,30 @@ const PRO_BENEFITS = [
 // Modal na sredini zaslona, ki se pokaže vsakič, ko akcija preseže paket Free
 export function UpgradeModal({ limits, onUpgrade }: Props) {
   const { reason, detail, hide } = useUpgradePrompt();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (reason) {
-      setBusy(false);
-      setError(null);
-    }
-  }, [reason]);
-
   // Pro uporabnik nima omejitev → modala ne kažemo
   if (!reason || limits?.plan === "pro") return null;
+  // key: ob vsakem novem pozivu sveže stanje (busy, napaka)
+  return (
+    <UpgradeDialog
+      key={`${reason}:${detail ?? ""}`}
+      reason={reason}
+      detail={detail}
+      limits={limits}
+      onUpgrade={onUpgrade}
+      onClose={hide}
+    />
+  );
+}
+
+function UpgradeDialog({
+  reason,
+  detail,
+  limits,
+  onUpgrade,
+  onClose: hide,
+}: Props & { reason: UpgradeReason; detail: string | null; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleUpgrade = async () => {
     if (busy) return;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { X, Plus, Minus, Trash2, Sparkles, AlertTriangle } from "lucide-react";
 import { usePlants } from "../hooks/usePlants";
 import type { UserInventoryPlant } from "../types/index";
@@ -18,8 +18,13 @@ interface Props {
   planLabel?: string;
 }
 
-export function PlantSelectorModal({
-  open,
+// Vsebina se ob vsakem odprtju na novo vzpostavi (sveže količine, iskanje, opozorila)
+export function PlantSelectorModal(props: Props) {
+  if (!props.embedded && !props.open) return null;
+  return <PlantSelectorContent {...props} />;
+}
+
+function PlantSelectorContent({
   onClose,
   inventory,
   onAdd,
@@ -83,17 +88,6 @@ export function PlantSelectorModal({
       .toLowerCase()
       .includes(searchQuery.toLowerCase()),
   );
-
-  useEffect(() => {
-    if (open) {
-      setQuantities({});
-      setSearchQuery("");
-      setNotice(null);
-    }
-  }, [open]);
-
-  // Standalone mode — ne prikaži če ni odprt
-  if (!embedded && !open) return null;
 
   const list = (
     <div className="flex flex-col gap-2 p-3">
