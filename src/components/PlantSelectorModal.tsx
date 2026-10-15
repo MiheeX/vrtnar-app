@@ -170,12 +170,16 @@ export function PlantSelectorModal({
 
   // Standalone
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+    >
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white rounded-t-2xl shadow-xl z-10 max-h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200">
+      <div className="relative w-full max-w-lg bg-white rounded-t-2xl shadow-xl z-10 h-[80vh] flex flex-col overflow-hidden">
+        <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-stone-200">
           <h2 className="font-semibold text-stone-800 text-lg">
-            🌱 Izberi rastline
+            🌱 Dodaj rastline
           </h2>
           <button
             onClick={onClose}
@@ -184,7 +188,9 @@ export function PlantSelectorModal({
             <X size={22} />
           </button>
         </div>
-        {list}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-safe">
+          {list}
+        </div>
       </div>
     </div>
   );

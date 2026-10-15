@@ -8,7 +8,7 @@ UI text and most code comments are in **Slovenian**. Comments may be Slovenian o
 
 - **A planning tool for a real garden, not a game.** One grid cell = **~10 cm**. Spacing and neighbor rules simulate how plants really sit next to each other.
 - **Public product**, web app first, online only (no offline mode for now). Languages: Slovenian and English.
-- **Several gardens per user.** The code currently assumes one (`useGarden` takes the first).
+- **Several gardens per user.** `useGardens` lists them, the burger `SideMenu` switches/creates/renames/deletes; the last opened garden is remembered per device in `localStorage`. The garden count is limited per plan (`plan_limits.max_gardens`), enforced by the `gardens_enforce_limit` trigger.
 - **Inventory = plants the user plans to plant**, added from the shared plant catalog. Planting a plant uses one from the inventory, and removing it from a bed returns it.
 - **Good/bad neighbors** show while dragging on the canvas, when planting next to a plant, and in the catalog.
 - **Time is coming**: planting dates, care (watering), seasons/years, crop rotation.
@@ -45,9 +45,13 @@ src/
   App.tsx                       routes; /garden wrapped in ProtectedRoute
   lib/supabaseClient.ts         single Supabase client (env: VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY)
   pages/GardenPage.tsx          orchestrator: wires hooks, modals, and GardenCanvas
-  pages/LoginPage.tsx           email/password login + sign-up
+  pages/LoginPage.tsx           email/password login + sign-up + "Pozabljeno geslo?" (reset email)
+  pages/ResetPasswordPage.tsx   /reset-password: set a new password from the email link
   components/garden/GardenCanvas.tsx   ~2100 lines: pan/zoom, draw/move/resize beds, plant drag&drop, context menu, collisions
-  components/*Modal.tsx         Inventory, PlantPicker (planting), PlantInfo (detail, swipe), PlantQuickInfo (bottom sheet), Settings
+  components/PlantSheet.tsx     plant bottom sheet, two snap points (peek ↔ full), follows the finger 1:1
+  components/SideMenu.tsx       burger drawer with levels: main → Moji vrtovi / Nastavitve; Dodaj rastline; Odjava
+  components/Toolbar.tsx        burger + current garden name, inventory, pan/draw mode
+  components/*Modal.tsx         Inventory, PlantPicker (planting), PlantSelector (catalog → inventory)
   hooks/use*.ts                 one hook per Supabase table/concern (data fetch + mutations)
   store/useGardenStore.ts       beds, mode ("pan" | "draw"), selectedBedId; only `mode` is persisted
   types/index.ts, types/garden.ts
@@ -57,18 +61,19 @@ src/
 
 `.mcp.json` connects the official Supabase MCP server, limited to this project (`project_ref`); you sign in with OAuth in the browser on first use. Use it to inspect the schema, run read queries, apply migrations and generate types. Follow the `supabase-data` skill, and ask before destructive SQL: this is the live database.
 
-## Data model (Supabase, inferred from client code — no migrations in repo; verify against the live schema via MCP)
+## Data model (Supabase — the base schema was built by hand; changes since then are in `supabase/migrations/`. Verify against the live schema via MCP)
 
 | table | key columns |
 |---|---|
-| `gardens` | id, user_id, name — one auto-created per user ("Moj vrt") in `useGarden` |
+| `gardens` | id, user_id, name, created_at — first one auto-created ("Moj vrt") in `useGardens`; insert limited by plan (trigger); deleting cascades to beds and bed_plants |
+| `plan_limits` | plan (`free`/`premium`) PK, max_gardens — limits as data, read-only for clients |
 | `beds` | id, user_id, garden_id, name, x, y, width, height, color — **units: grid cells** |
 | `bed_plants` | id, user_id, garden_id, bed_id, plant_id, cell_x, cell_y, quantity, variety, planted_at, last_watered_at, notes — **cell_x/y in sub-cells** |
 | `plants` | catalog: id, name, latin_name, img (emoji), cells_spacing, around_cells_spacing |
 | `plant_neighbors` | plant_id, neighbor_id, relationship `"good" \| "bad"` (symmetric — check both directions) |
 | `user_plants` | inventory: user_id, plant_id, quantity |
 | `user_settings` | user_id (unique), show_sub_grid, allow_bad_neighbor_drop |
-| `profiles` | typed in `types/index.ts` (plan, stripe fields) — not yet used |
+| `profiles` | typed in `types/index.ts`; `plan` is read for limits. Clients may only update username, full_name, avatar_url (column grants) |
 
 `GardenPlant`, `GardenSection`, `SectionPlant` in `types/index.ts` are older shapes; current code uses `BedPlant` from `hooks/useBedPlants.ts`.
 

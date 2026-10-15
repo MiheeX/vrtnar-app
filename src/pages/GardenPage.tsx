@@ -6,13 +6,14 @@ import type { GardenBed } from "../types/garden";
 import { Toolbar } from "../components/Toolbar";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useUserInventory } from "../hooks/useUserInventory";
-//import { PlantSelectorModal } from "../components/PlantSelectorModal";
-import { useGarden } from "../hooks/useGarden";
+import { useGardens } from "../hooks/useGardens";
+import { SideMenu } from "../components/SideMenu";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { InventoryModal } from "../components/InventoryModal";
 import { PlantPickerModal } from "../components/PlantPickerModal";
 import { useBedPlants } from "../hooks/useBedPlants";
-import { SettingsModal } from "../components/SettingsModal";
+import { PlantSelectorModal } from "../components/PlantSelectorModal";
 import type { PlantNeighbor } from "../types";
 import { useUserSettings } from "../hooks/useUserSettings";
 import { PlantSheet } from "../components/PlantSheet";
@@ -32,7 +33,7 @@ const GardenPage: React.FC = () => {
   const selectedBed = beds.find((b) => b.id === selectedBedId) ?? null;
   const [editName, setEditName] = useState("");
   const canvasRef = useRef<GardenCanvasHandle>(null); // ← ref na canvas
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [addPlantsOpen, setAddPlantsOpen] = useState(false);
 
   const { userId } = useCurrentUser();
   //const { inventory, addPlant, removePlant, decrementPlant, consumePlant } =
@@ -43,7 +44,10 @@ const GardenPage: React.FC = () => {
   const { inventory, addPlant, removePlant, decrementPlant, consumePlant } =
     useUserInventory(userId ?? "");
 
-  const { gardenId } = useGarden(userId);
+  const gardensApi = useGardens(userId);
+  const gardenId = gardensApi.currentGardenId;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const navigate = useNavigate();
   const {
     bedPlants,
     refresh: refreshBedPlants,
@@ -90,16 +94,26 @@ const GardenPage: React.FC = () => {
       });
   }, []);
 
+  // Ob menjavi vrta počisti stanje prejšnjega in naloži njegove gredice
   useEffect(() => {
-    const fetchBeds = async () => {
-      const { data } = await supabase
-        .from("beds")
-        .select("*")
-        .eq("garden_id", gardenId);
-      if (data) useGardenStore.setState({ beds: data });
+    if (!gardenId) return;
+    let cancelled = false;
+    canvasRef.current?.reset();
+    selectBed(null);
+    setQuickInfoTargetId(null);
+    useGardenStore.setState({ beds: [] });
+    supabase
+      .from("beds")
+      .select("*")
+      .eq("garden_id", gardenId)
+      .then(({ data, error }) => {
+        if (error) console.error("Napaka pri nalaganju gredic:", error);
+        if (!cancelled && data) useGardenStore.setState({ beds: data });
+      });
+    return () => {
+      cancelled = true;
     };
-    fetchBeds();
-  }, [gardenId]);
+  }, [gardenId, selectBed]);
 
   return (
     <div className="flex flex-col h-screen bg-stone-50 select-none">
@@ -114,10 +128,40 @@ const GardenPage: React.FC = () => {
             canvasRef.current?.reset();
             setMode(m);
           }}
-          onSettingsOpen={() => setSettingsOpen(true)}
+          gardenName={gardensApi.currentGarden?.name ?? "Moj vrt"}
+          onMenuOpen={() => {
+            gardensApi.refresh(); // sveže število gredic
+            setMenuOpen(true);
+          }}
           onInventoryOpen={() => setInventoryOpen(true)}
         />
       </div>
+
+      <SideMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        gardens={gardensApi.gardens}
+        currentGardenId={gardenId}
+        plan={gardensApi.plan}
+        maxGardens={gardensApi.maxGardens}
+        atLimit={gardensApi.atLimit}
+        onSelectGarden={gardensApi.selectGarden}
+        onCreateGarden={gardensApi.createGarden}
+        onRenameGarden={gardensApi.renameGarden}
+        onDeleteGarden={gardensApi.deleteGarden}
+        onAddPlants={() => setAddPlantsOpen(true)}
+        showSubGrid={showSubGrid}
+        onToggleSubGrid={() => updateSetting("show_sub_grid", !showSubGrid)}
+        allowBadNeighborDrop={allowBadNeighborDrop}
+        onToggleAllowBadNeighborDrop={() =>
+          updateSetting("allow_bad_neighbor_drop", !allowBadNeighborDrop)
+        }
+        onSignOut={async () => {
+          const { error } = await supabase.auth.signOut();
+          if (error) console.error("Napaka pri odjavi:", error);
+          navigate("/login", { replace: true });
+        }}
+      />
 
       {/* Mode hint */}
       <div
@@ -228,26 +272,10 @@ const GardenPage: React.FC = () => {
         onRemove={removePlant}
         onDecrement={decrementPlant}
       />
-      {/* Settings modal */}
-      {/*
+      {/* Katalog rastlin — dodajanje v inventar (iz menija) */}
       <PlantSelectorModal
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        inventory={inventory}
-        onAdd={addPlant}
-        onRemove={removePlant}
-      />
-      */}
-
-      <SettingsModal
-        showSubGrid={showSubGrid}
-        onToggleSubGrid={() => updateSetting("show_sub_grid", !showSubGrid)}
-        allowBadNeighborDrop={allowBadNeighborDrop}
-        onToggleAllowBadNeighborDrop={() =>
-          updateSetting("allow_bad_neighbor_drop", !allowBadNeighborDrop)
-        }
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        open={addPlantsOpen}
+        onClose={() => setAddPlantsOpen(false)}
         inventory={inventory}
         onAdd={addPlant}
         onRemove={removePlant}

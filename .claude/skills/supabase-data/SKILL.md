@@ -40,8 +40,8 @@ Types are hand-written in `src/types/index.ts` and `src/hooks/useBedPlants.ts`. 
 
 ## Schema changes
 
-There is no `supabase/migrations` folder yet. For any schema change:
-1. Write the SQL as a migration (via the Supabase MCP `apply_migration`, or a file in `supabase/migrations/<timestamp>_<name>.sql` if the CLI is set up).
+The base schema was created by hand in the dashboard; later changes live in `supabase/migrations/`. For any schema change:
+1. Write the SQL as a file in `supabase/migrations/<timestamp>_<name>.sql` and apply the same SQL with the Supabase MCP `apply_migration`.
 2. Enable RLS on every new table and add policies scoped to `auth.uid() = user_id` for user-owned data; catalog tables (`plants`, `plant_neighbors`) are read-only for clients.
 3. Update the TS types and the data-model table in `CLAUDE.md`.
 4. Ask the user before destructive SQL (DROP, DELETE without WHERE, column type changes) — this is the live project database.
